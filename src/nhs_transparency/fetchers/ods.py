@@ -165,7 +165,7 @@ class ODSFetcher:
             roles[0].get("id") if roles else "Unknown",
         )
 
-        return self._parse_organization_detail(data, primary_role)
+        return self._parse_organization_detail(data, primary_role or "Unknown")
 
     def _parse_organization_from_list(self, org_data: dict, role_id: str) -> Organization | None:
         """Parse organization data from list API response (search results)."""
