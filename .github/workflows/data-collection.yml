@@ -99,33 +99,68 @@ jobs:
             echo "month=$(date -d 'last month' '+%Y-%m')" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Download contracts CSV from data.gov.uk
+      - name: Download contracts CSV from Contracts Finder
         run: |
-          # Contracts Finder publishes monthly CSVs
-          # Format: https://data.gov.uk/dataset/contracts-finder-archive
-          YEAR_MONTH="${{ steps.month.outputs.month }}"
-          YEAR="${YEAR_MONTH%-*}"
-          MONTH="${YEAR_MONTH#*-}"
+          mkdir -p data
 
-          echo "Fetching contracts for ${YEAR_MONTH}"
+          # Calculate date range - last 2 years of data
+          END_DATE=$(date '+%d/%m/%Y')
+          START_DATE=$(date -d '2 years ago' '+%d/%m/%Y')
 
-          # Use the direct CSV endpoint if available
-          curl -L -o "data/contracts-${YEAR_MONTH}.csv" \
-            "https://www.contractsfinder.service.gov.uk/Published/Notices/Search/CSV?publishedFrom=${YEAR}-${MONTH}-01&publishedTo=${YEAR}-${MONTH}-31" \
-            || echo "Direct download failed, will try data.gov.uk API"
+          echo "Fetching NHS contracts from ${START_DATE} to ${END_DATE}"
+
+          # First, perform a search to set up the session
+          curl -s -L -c data/cookies.txt -b data/cookies.txt \
+            "https://www.contractsfinder.service.gov.uk/Search/Results?Keywords=NHS&PublishedFrom=${START_DATE}&PublishedTo=${END_DATE}" \
+            > /dev/null
+
+          # Then download the CSV
+          curl -s -L -c data/cookies.txt -b data/cookies.txt \
+            "https://www.contractsfinder.service.gov.uk/Search/GetCsvFile" \
+            -o "data/contracts-nhs.csv"
+
+          # Check if download succeeded
+          if [ -f "data/contracts-nhs.csv" ] && [ -s "data/contracts-nhs.csv" ]; then
+            echo "Downloaded $(wc -l < data/contracts-nhs.csv) lines"
+            head -2 data/contracts-nhs.csv
+          else
+            echo "Download failed or empty file"
+          fi
+
+          # Also fetch IT-specific contracts
+          echo "Fetching IT contracts..."
+          for KEYWORD in "Palantir" "TPP" "EMIS" "electronic patient record" "health data platform"; do
+            echo "Searching for: ${KEYWORD}"
+            curl -s -L -c data/cookies.txt -b data/cookies.txt \
+              "https://www.contractsfinder.service.gov.uk/Search/Results?Keywords=${KEYWORD}&PublishedFrom=${START_DATE}&PublishedTo=${END_DATE}" \
+              > /dev/null
+            curl -s -L -c data/cookies.txt -b data/cookies.txt \
+              "https://www.contractsfinder.service.gov.uk/Search/GetCsvFile" \
+              -o "data/contracts-${KEYWORD// /-}.csv" 2>/dev/null || true
+            sleep 1
+          done
+
+          rm -f data/cookies.txt
 
       - name: Load contracts into database
         run: |
-          YEAR_MONTH="${{ steps.month.outputs.month }}"
-          if [ -f "data/contracts-${YEAR_MONTH}.csv" ]; then
+          # Load main NHS contracts
+          if [ -f "data/contracts-nhs.csv" ] && [ -s "data/contracts-nhs.csv" ]; then
+            echo "Loading NHS contracts..."
             uv run nhs --db ${{ env.DATABASE_PATH }} fetch contracts \
-              --file "data/contracts-${YEAR_MONTH}.csv" \
-              --terms "Palantir" --terms "TPP" --terms "EMIS" \
-              --terms "electronic patient record" --terms "EPR" \
-              --terms "health data" --terms "clinical system"
-          else
-            echo "No contracts file found for ${YEAR_MONTH}"
+              --file "data/contracts-nhs.csv" \
+              --all-buyers
           fi
+
+          # Load IT-specific contracts
+          for CSV in data/contracts-*.csv; do
+            if [ -f "$CSV" ] && [ -s "$CSV" ] && [ "$CSV" != "data/contracts-nhs.csv" ]; then
+              echo "Loading $CSV..."
+              uv run nhs --db ${{ env.DATABASE_PATH }} fetch contracts \
+                --file "$CSV" \
+                --all-buyers || echo "Failed to load $CSV"
+            fi
+          done
 
       - name: Show database stats
         run: uv run nhs --db ${{ env.DATABASE_PATH }} stats

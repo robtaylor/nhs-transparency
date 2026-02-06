@@ -93,6 +93,8 @@ class ContractsBulkLoader:
         """
         Parse CSV content into ContractRecord objects.
 
+        Supports both Contracts Finder direct export format and OCDS format.
+
         Args:
             csv_content: Raw CSV text
             nhs_only: If True, only include NHS buyers
@@ -105,9 +107,12 @@ class ContractsBulkLoader:
         reader = csv.DictReader(io.StringIO(csv_content))
 
         for row in reader:
-            # Extract buyer name - column names vary in OCDS CSV
+            # Detect format and extract buyer name
+            # Contracts Finder format uses "Organisation Name"
+            # OCDS format uses "buyer/name" or similar
             buyer_name = (
-                row.get("buyer/name")
+                row.get("Organisation Name")
+                or row.get("buyer/name")
                 or row.get("buyer_name")
                 or row.get("releases/0/buyer/name")
                 or ""
@@ -119,13 +124,15 @@ class ContractsBulkLoader:
 
             # Extract title and description
             title = (
-                row.get("tender/title")
+                row.get("Title")
+                or row.get("tender/title")
                 or row.get("title")
                 or row.get("releases/0/tender/title")
                 or ""
             )
             description = (
-                row.get("tender/description")
+                row.get("Description")
+                or row.get("tender/description")
                 or row.get("description")
                 or row.get("releases/0/tender/description")
             )
@@ -137,53 +144,96 @@ class ContractsBulkLoader:
                     continue
 
             # Extract contract ID
-            external_id = row.get("releases/0/id") or row.get("ocid") or row.get("id") or ""
+            external_id = (
+                row.get("Notice Identifier")
+                or row.get("releases/0/id")
+                or row.get("ocid")
+                or row.get("id")
+                or ""
+            )
             if not external_id:
                 continue
 
-            # Extract supplier
-            supplier_name = (
-                row.get("awards/0/suppliers/0/name")
-                or row.get("supplier_name")
-                or row.get("releases/0/awards/0/suppliers/0/name")
+            # Extract supplier - Contracts Finder format has complex supplier field
+            supplier_field = row.get(
+                "Supplier [Name|Address|Ref type|Ref Number|Is SME|Is VCSE]", ""
             )
+            if supplier_field and "|" in supplier_field:
+                # Format: "Name|Address|RefType|RefNum|IsSME|IsVCSE"
+                supplier_name = supplier_field.split("|")[0].strip()
+            else:
+                supplier_name = (
+                    supplier_field
+                    or row.get("awards/0/suppliers/0/name")
+                    or row.get("supplier_name")
+                    or row.get("releases/0/awards/0/suppliers/0/name")
+                    or None
+                )
 
-            # Extract value
+            # Extract value - try awarded value first, then value range
             value_gbp = None
-            value_str = (
-                row.get("awards/0/value/amount")
-                or row.get("tender/value/amount")
-                or row.get("releases/0/awards/0/value/amount")
-            )
-            if value_str:
+
+            awarded_value = row.get("Awarded Value") or row.get("awards/0/value/amount")
+            if awarded_value:
                 try:
-                    value_gbp = int(float(value_str))
+                    value_gbp = int(float(str(awarded_value).replace(",", "").replace("£", "")))
                 except (ValueError, TypeError):
                     pass
 
+            # Try value range if no awarded value
+            if not value_gbp:
+                value_low_str = row.get("Value Low") or row.get("tender/minValue/amount")
+                value_high_str = row.get("Value High") or row.get("tender/maxValue/amount")
+                value_low = None
+                value_high = None
+
+                if value_low_str:
+                    try:
+                        value_low = int(float(str(value_low_str).replace(",", "").replace("£", "")))
+                    except (ValueError, TypeError):
+                        pass
+
+                if value_high_str:
+                    try:
+                        value_high = int(
+                            float(str(value_high_str).replace(",", "").replace("£", ""))
+                        )
+                    except (ValueError, TypeError):
+                        pass
+
+                # Use midpoint of range or high value
+                if value_low and value_high:
+                    value_gbp = (value_low + value_high) // 2
+                elif value_high:
+                    value_gbp = value_high
+
             # Extract dates
             award_date = self._parse_date(
-                row.get("awards/0/date")
-                or row.get("award_date")
-                or row.get("releases/0/awards/0/date")
+                row.get("Awarded Date") or row.get("awards/0/date") or row.get("award_date")
             )
             start_date = self._parse_date(
-                row.get("tender/contractPeriod/startDate")
-                or row.get("start_date")
-                or row.get("releases/0/tender/contractPeriod/startDate")
+                row.get("Contract start date")
+                or row.get("Start Date")
+                or row.get("tender/contractPeriod/startDate")
             )
             end_date = self._parse_date(
-                row.get("tender/contractPeriod/endDate")
-                or row.get("end_date")
-                or row.get("releases/0/tender/contractPeriod/endDate")
+                row.get("Contract end date")
+                or row.get("End Date")
+                or row.get("tender/contractPeriod/endDate")
             )
 
-            # Extract URL
-            notice_url = (
-                row.get("tender/documents/0/url")
-                or row.get("notice_url")
-                or row.get("releases/0/tender/documents/0/url")
-            )
+            # If no award date, use published date
+            if not award_date:
+                award_date = self._parse_date(row.get("Published Date"))
+
+            # Build notice URL from identifier
+            notice_id = row.get("Notice Identifier", "")
+            if notice_id:
+                notice_url = f"https://www.contractsfinder.service.gov.uk/Notice/{notice_id}"
+            else:
+                notice_url = (
+                    row.get("tender/documents/0/url") or row.get("notice_url") or row.get("Links")
+                )
 
             records.append(
                 ContractRecord(
@@ -191,7 +241,7 @@ class ContractsBulkLoader:
                     title=title,
                     description=description[:5000] if description else None,
                     buyer_name=buyer_name,
-                    supplier_name=supplier_name,
+                    supplier_name=supplier_name if supplier_name else None,
                     value_gbp=value_gbp,
                     award_date=award_date,
                     start_date=start_date,
