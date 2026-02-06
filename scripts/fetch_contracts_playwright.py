@@ -7,23 +7,28 @@ a real browser to:
 1. Navigate to the search page
 2. Set filters (closed notices, awarded contracts)
 3. Enter search keywords
-4. Click "Download CSV"
+4. Optionally filter by date range
+5. Click "Download CSV"
 
 Usage:
-    uv run scripts/fetch_contracts_playwright.py --keyword "NHS England" --output data/contracts.csv
+    uv run scripts/fetch_contracts_playwright.py --keyword "Palantir" --output data/contracts.csv
+    uv run scripts/fetch_contracts_playwright.py --keyword "NHS England" --year 2024 --output data/contracts-2024.csv
 """
 
 import argparse
+import sys
 import time
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 
 def fetch_contracts(
     keyword: str,
     output_path: Path,
     headless: bool = True,
+    download_timeout: int = 300000,  # 5 minutes
+    year: int | None = None,
 ) -> int:
     """
     Search Contracts Finder and download CSV with proper filters.
@@ -32,12 +37,17 @@ def fetch_contracts(
         keyword: Search keyword (e.g., "NHS England", "Palantir")
         output_path: Where to save the CSV file
         headless: Run browser in headless mode
+        download_timeout: Timeout for CSV download in milliseconds
+        year: Optional year to filter by (e.g., 2024)
 
     Returns:
-        Number of lines in downloaded CSV
+        Number of lines in downloaded CSV (0 on failure)
     """
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=headless)
+    browser = None
+    playwright = None
+    try:
+        playwright = sync_playwright().start()
+        browser = playwright.chromium.launch(headless=headless)
         context = browser.new_context(accept_downloads=True)
         page = context.new_page()
 
@@ -72,6 +82,21 @@ def fetch_contracts(
         if not awarded_cb.is_checked():
             awarded_cb.click()
             time.sleep(0.5)
+
+        # Set date range if year specified
+        if year:
+            print(f"Filtering by year: {year}")
+            # GOV.UK date inputs use separate day/month/year fields
+            # published_date_from-day, published_date_from-month, published_date_from-year
+            # published_date_to-day, published_date_to-month, published_date_to-year
+            page.fill("#published_date_from-day", "01")
+            page.fill("#published_date_from-month", "01")
+            page.fill("#published_date_from-year", str(year))
+            time.sleep(0.3)
+            page.fill("#published_date_to-day", "31")
+            page.fill("#published_date_to-month", "12")
+            page.fill("#published_date_to-year", str(year))
+            time.sleep(0.3)
 
         # Click "Update results" and wait for navigation
         print("Applying filters (closed + awarded)...")
@@ -108,22 +133,40 @@ def fetch_contracts(
             print("ERROR: Could not find CSV download link")
             # Take a screenshot for debugging
             page.screenshot(path=str(output_path.parent / "debug-screenshot.png"))
-            browser.close()
             return 0
 
-        # Click and wait for download
-        with page.expect_download(timeout=120000) as download_info:
-            csv_link.click()
+        # Click and wait for download with extended timeout
+        try:
+            with page.expect_download(timeout=download_timeout) as download_info:
+                csv_link.click()
 
-        download = download_info.value
-        download.save_as(output_path)
-        print(f"Saved to: {output_path}")
-
-        browser.close()
+            download = download_info.value
+            download.save_as(output_path)
+            print(f"Saved to: {output_path}")
+        except PlaywrightTimeout:
+            print(f"ERROR: Download timed out after {download_timeout // 1000}s")
+            return 0
 
         # Count lines
         with open(output_path) as f:
             return sum(1 for _ in f)
+
+    except Exception as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 0
+
+    finally:
+        # Clean up resources
+        if browser:
+            try:
+                browser.close()
+            except Exception:
+                pass
+        if playwright:
+            try:
+                playwright.stop()
+            except Exception:
+                pass
 
 
 def main():
@@ -137,6 +180,13 @@ def main():
     parser.add_argument(
         "--no-headless", action="store_true", help="Run browser in visible mode (for debugging)"
     )
+    parser.add_argument(
+        "--year", "-y", type=int, help="Filter by publication year (e.g., 2024)"
+    )
+    parser.add_argument(
+        "--timeout", "-t", type=int, default=300,
+        help="Download timeout in seconds (default: 300)"
+    )
 
     args = parser.parse_args()
 
@@ -144,9 +194,12 @@ def main():
         keyword=args.keyword,
         output_path=args.output,
         headless=not args.no_headless,
+        download_timeout=args.timeout * 1000,
+        year=args.year,
     )
 
     print(f"Downloaded {line_count} lines")
+    sys.exit(0 if line_count > 0 else 1)
 
 
 if __name__ == "__main__":

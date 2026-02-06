@@ -109,12 +109,23 @@ jobs:
           # Use Playwright to properly search with filters (closed + awarded)
           # The curl-based approach doesn't work because the CSV export ignores URL parameters
 
-          # Fetch NHS-related awarded contracts for key vendors
-          for KEYWORD in "NHS England" "Palantir" "TPP" "EMIS" "Cerner" "Epic"; do
+          # Fetch "NHS England" contracts by year (last 10 years)
+          # This broad search returns too many results without date filtering
+          CURRENT_YEAR=$(date +%Y)
+          for YEAR in $(seq $((CURRENT_YEAR - 9)) $CURRENT_YEAR); do
+            echo "Fetching NHS England contracts for year: ${YEAR}"
+            uv run python scripts/fetch_contracts_playwright.py \
+              --keyword "NHS England" \
+              --year "${YEAR}" \
+              --output "data/contracts-NHS-England-${YEAR}.csv" || echo "Failed to fetch NHS England ${YEAR}"
+          done
+
+          # Fetch vendor-specific contracts (smaller result sets, no date filtering needed)
+          for KEYWORD in "Palantir" "TPP" "EMIS" "Cerner" "Epic"; do
             echo "Fetching awarded contracts for: ${KEYWORD}"
             uv run python scripts/fetch_contracts_playwright.py \
               --keyword "${KEYWORD}" \
-              --output "data/contracts-${KEYWORD// /-}.csv" || echo "Failed to fetch ${KEYWORD}"
+              --output "data/contracts-${KEYWORD}.csv" || echo "Failed to fetch ${KEYWORD}"
           done
 
           echo "Downloaded contract files:"
