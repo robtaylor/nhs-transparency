@@ -134,13 +134,13 @@ jobs:
       - name: Load contracts into database
         run: |
           # Load all downloaded contract CSVs
-          # These are already filtered to closed+awarded contracts
+          # Apply NHS buyer filtering to exclude non-NHS organizations
+          # (Playwright only filters by closed+awarded status, not by buyer)
           for CSV in data/contracts-*.csv; do
             if [ -f "$CSV" ] && [ -s "$CSV" ]; then
               echo "Loading $CSV..."
-              # Use --all-buyers since Playwright already filtered to awarded contracts
               uv run nhs --db ${{ env.DATABASE_PATH }} fetch contracts \
-                --file "$CSV" --all-buyers || echo "Failed to load $CSV"
+                --file "$CSV" || echo "Failed to load $CSV"
             fi
           done
 
