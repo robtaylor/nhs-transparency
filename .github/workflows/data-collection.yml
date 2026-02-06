@@ -99,73 +99,39 @@ jobs:
             echo "month=$(date -d 'last month' '+%Y-%m')" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Install Playwright
+        run: uv run playwright install chromium
+
       - name: Download contracts CSV from Contracts Finder
         run: |
           mkdir -p data
 
-          # Calculate date range - last 2 years of data
-          END_DATE=$(date '+%d/%m/%Y')
-          START_DATE=$(date -d '2 years ago' '+%d/%m/%Y')
+          # Use Playwright to properly search with filters (closed + awarded)
+          # The curl-based approach doesn't work because the CSV export ignores URL parameters
 
-          echo "Fetching NHS contracts from ${START_DATE} to ${END_DATE}"
-
-          # First, perform a search to set up the session
-          curl -s -L -c data/cookies.txt -b data/cookies.txt \
-            "https://www.contractsfinder.service.gov.uk/Search/Results?Keywords=NHS&PublishedFrom=${START_DATE}&PublishedTo=${END_DATE}" \
-            > /dev/null
-
-          # Then download the CSV
-          curl -s -L -c data/cookies.txt -b data/cookies.txt \
-            "https://www.contractsfinder.service.gov.uk/Search/GetCsvFile" \
-            -o "data/contracts-nhs.csv"
-
-          # Check if download succeeded
-          if [ -f "data/contracts-nhs.csv" ] && [ -s "data/contracts-nhs.csv" ]; then
-            echo "Downloaded $(wc -l < data/contracts-nhs.csv) lines"
-            head -2 data/contracts-nhs.csv
-          else
-            echo "Download failed or empty file"
-          fi
-
-          # Also fetch IT-specific contracts
-          echo "Fetching IT contracts..."
-          for KEYWORD in "Palantir" "TPP" "EMIS" "EPR" "clinical+system"; do
-            echo "Searching for: ${KEYWORD}"
-            # URL encode spaces as +
-            ENCODED_KEYWORD="${KEYWORD// /+}"
-            curl -s -L -c data/cookies.txt -b data/cookies.txt \
-              "https://www.contractsfinder.service.gov.uk/Search/Results?Keywords=${ENCODED_KEYWORD}&PublishedFrom=${START_DATE}&PublishedTo=${END_DATE}" \
-              > /dev/null || continue
-            curl -s -L -c data/cookies.txt -b data/cookies.txt \
-              "https://www.contractsfinder.service.gov.uk/Search/GetCsvFile" \
-              -o "data/contracts-${KEYWORD}.csv" || true
-            sleep 2
+          # Fetch NHS-related awarded contracts for key vendors
+          for KEYWORD in "NHS England" "Palantir" "TPP" "EMIS" "Cerner" "Epic"; do
+            echo "Fetching awarded contracts for: ${KEYWORD}"
+            uv run python scripts/fetch_contracts_playwright.py \
+              --keyword "${KEYWORD}" \
+              --output "data/contracts-${KEYWORD// /-}.csv" || echo "Failed to fetch ${KEYWORD}"
           done
 
-          rm -f data/cookies.txt
+          echo "Downloaded contract files:"
+          ls -la data/contracts-*.csv 2>/dev/null || echo "No CSV files found"
 
       - name: Load contracts into database
         run: |
-          # Load main NHS contracts (filtered to NHS buyers only)
-          if [ -f "data/contracts-nhs.csv" ] && [ -s "data/contracts-nhs.csv" ]; then
-            echo "Loading NHS contracts..."
-            uv run nhs --db ${{ env.DATABASE_PATH }} fetch contracts \
-              --file "data/contracts-nhs.csv"
-          fi
-
-          # Load IT-specific contracts (also filtered to NHS buyers)
+          # Load all downloaded contract CSVs
+          # These are already filtered to closed+awarded contracts
           for CSV in data/contracts-*.csv; do
-            if [ -f "$CSV" ] && [ -s "$CSV" ] && [ "$CSV" != "data/contracts-nhs.csv" ]; then
+            if [ -f "$CSV" ] && [ -s "$CSV" ]; then
               echo "Loading $CSV..."
+              # Use --all-buyers since Playwright already filtered to awarded contracts
               uv run nhs --db ${{ env.DATABASE_PATH }} fetch contracts \
-                --file "$CSV" || echo "Failed to load $CSV"
+                --file "$CSV" --all-buyers || echo "Failed to load $CSV"
             fi
           done
-
-      - name: Load known major contracts
-        run: |
-          echo "Loading known major NHS IT contracts..."
-          uv run nhs --db ${{ env.DATABASE_PATH }} fetch known-contracts
 
       - name: Show database stats
         run: uv run nhs --db ${{ env.DATABASE_PATH }} stats

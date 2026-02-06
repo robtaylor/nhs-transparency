@@ -3,6 +3,18 @@ Known major NHS IT contracts to track.
 
 These are high-profile contracts that we want to ensure are captured,
 fetched directly by their Contracts Finder notice IDs.
+
+HOW TO FIND NEW CONTRACTS:
+1. Go to https://www.contractsfinder.service.gov.uk/Search/Results
+2. Set filters:
+   - Notice status: Closed (uncheck Open)
+   - Procurement stage: Awarded contract
+   - Keywords: e.g., "NHS England", "Palantir", "TPP", "EMIS"
+3. Find the contract and copy its notice ID from the URL
+4. Add it to KNOWN_CONTRACTS below
+
+The CSV export from Contracts Finder is broken (ignores filters),
+so we must track major contracts explicitly by their notice IDs.
 """
 
 # Major NHS IT contracts with their Contracts Finder notice IDs
