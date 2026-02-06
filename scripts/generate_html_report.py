@@ -102,7 +102,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <!-- Top Buyers -->
         <section class="card">
             <h2 class="text-xl font-semibold mb-4">Top NHS Buyers by Contract Value</h2>
-            <p class="text-gray-500 text-sm mb-3">Excludes framework ceiling values over £200M</p>
+            <p class="text-gray-500 text-sm mb-3">
+                Excludes framework ceiling values over £200M.
+                <a href="trusts.html" class="text-blue-600 hover:underline">View all organizations →</a>
+            </p>
             <div class="overflow-x-auto">
                 <table class="w-full">
                     <thead>

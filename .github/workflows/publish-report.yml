@@ -55,6 +55,12 @@ jobs:
             --db data/nhs.db \
             --output public/index.html
 
+      - name: Generate trust detail pages
+        run: |
+          uv run python scripts/generate_trust_pages.py \
+            --db data/nhs.db \
+            --output public/
+
       - name: Generate markdown report
         run: |
           uv run python scripts/generate_report.py \
