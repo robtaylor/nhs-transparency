@@ -268,16 +268,16 @@ def generate_trust_page(conn: sqlite3.Connection, buyer_name: str, output_dir: P
     if not ceiling_rows:
         ceiling_rows = '<tr><td colspan="3" class="py-4 text-center text-gray-500">No framework agreements over £200M</td></tr>'
 
-    # Get top suppliers
+    # Get top suppliers - group case-insensitively
     cursor.execute(
         """
         SELECT
-            supplier_name,
+            MAX(supplier_name) as supplier_name,
             COUNT(*) as contract_count,
             SUM(CASE WHEN value_gbp <= ? THEN COALESCE(value_gbp, 0) ELSE 0 END) as total_value
         FROM contracts
         WHERE buyer_name = ? AND supplier_name IS NOT NULL
-        GROUP BY supplier_name
+        GROUP BY UPPER(supplier_name)
         ORDER BY total_value DESC
         LIMIT 10
         """,

@@ -64,12 +64,12 @@ def generate_report(db_path: Path, output_path: Path) -> None:
         # Top suppliers by value
         cursor = conn.execute("""
             SELECT
-                supplier_name,
+                MAX(supplier_name) as supplier_name,
                 COUNT(*) as contract_count,
                 SUM(COALESCE(value_gbp, 0)) as total_value
             FROM contracts
             WHERE supplier_name IS NOT NULL
-            GROUP BY supplier_name
+            GROUP BY UPPER(supplier_name)
             ORDER BY total_value DESC
             LIMIT 20
         """)

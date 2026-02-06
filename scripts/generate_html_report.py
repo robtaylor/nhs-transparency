@@ -360,25 +360,26 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
 
     # Top vendors by contract value (dynamic, not hardcoded)
     # Exclude special labels and bad data entries
+    # Group by case-insensitive name to consolidate duplicates like "AbbVie Ltd" / "ABBVIE LTD"
     cursor = conn.execute(
         """
         SELECT
-            supplier_name,
+            MAX(supplier_name) as supplier_name,
             COUNT(*) as contract_count,
             SUM(CASE WHEN value_gbp <= ? THEN COALESCE(value_gbp, 0) ELSE 0 END) as total_value
         FROM contracts
         WHERE supplier_name IS NOT NULL
-          AND supplier_name NOT IN (
-              'Multiple suppliers (framework)',
-              'Pre-procurement (no supplier yet)',
-              'Not specified'
+          AND UPPER(supplier_name) NOT IN (
+              'MULTIPLE SUPPLIERS (FRAMEWORK)',
+              'PRE-PROCUREMENT (NO SUPPLIER YET)',
+              'NOT SPECIFIED'
           )
-          AND supplier_name NOT LIKE '%framework%'
-          AND supplier_name NOT LIKE 'Please see%'
-          AND supplier_name NOT LIKE 'See attached%'
-          AND supplier_name NOT LIKE 'Various%'
+          AND UPPER(supplier_name) NOT LIKE '%FRAMEWORK%'
+          AND UPPER(supplier_name) NOT LIKE 'PLEASE SEE%'
+          AND UPPER(supplier_name) NOT LIKE 'SEE ATTACHED%'
+          AND UPPER(supplier_name) NOT LIKE 'VARIOUS%'
           AND LENGTH(supplier_name) > 3
-        GROUP BY supplier_name
+        GROUP BY UPPER(supplier_name)
         HAVING total_value > 0
         ORDER BY total_value DESC
         LIMIT 5
@@ -462,16 +463,16 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
             </tr>
         """
 
-    # Top suppliers - exclude very high values
+    # Top suppliers - exclude very high values, group case-insensitively
     cursor = conn.execute(
         """
         SELECT
-            supplier_name,
+            MAX(supplier_name) as supplier_name,
             COUNT(*) as contract_count,
             SUM(CASE WHEN value_gbp <= ? THEN COALESCE(value_gbp, 0) ELSE 0 END) as total_value
         FROM contracts
         WHERE supplier_name IS NOT NULL
-        GROUP BY supplier_name
+        GROUP BY UPPER(supplier_name)
         ORDER BY total_value DESC
         LIMIT 15
     """,
