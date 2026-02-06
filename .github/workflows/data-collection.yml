@@ -146,21 +146,19 @@ jobs:
 
       - name: Load contracts into database
         run: |
-          # Load main NHS contracts
+          # Load main NHS contracts (filtered to NHS buyers only)
           if [ -f "data/contracts-nhs.csv" ] && [ -s "data/contracts-nhs.csv" ]; then
             echo "Loading NHS contracts..."
             uv run nhs --db ${{ env.DATABASE_PATH }} fetch contracts \
-              --file "data/contracts-nhs.csv" \
-              --all-buyers
+              --file "data/contracts-nhs.csv"
           fi
 
-          # Load IT-specific contracts
+          # Load IT-specific contracts (also filtered to NHS buyers)
           for CSV in data/contracts-*.csv; do
             if [ -f "$CSV" ] && [ -s "$CSV" ] && [ "$CSV" != "data/contracts-nhs.csv" ]; then
               echo "Loading $CSV..."
               uv run nhs --db ${{ env.DATABASE_PATH }} fetch contracts \
-                --file "$CSV" \
-                --all-buyers || echo "Failed to load $CSV"
+                --file "$CSV" || echo "Failed to load $CSV"
             fi
           done
 

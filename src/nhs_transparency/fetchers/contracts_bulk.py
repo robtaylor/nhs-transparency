@@ -22,19 +22,28 @@ from ..db import get_connection
 logger = logging.getLogger(__name__)
 
 # NHS-related buyer keywords for filtering
+# These must strongly indicate an NHS organization to avoid false positives
+# (e.g., "Trust" alone matches "National Trust", "King's Trust", etc.)
 NHS_BUYER_KEYWORDS = [
-    "NHS",
+    "NHS",  # Direct NHS branding
     "National Health Service",
-    "Trust",
-    "Hospital",
-    "Foundation Trust",
-    "Integrated Care",
+    "NHS Trust",  # Specific NHS Trust designation
+    "NHS Foundation Trust",
+    "Foundation Trust",  # Usually NHS
+    "Hospital Trust",
+    "Integrated Care Board",
+    "Integrated Care System",
     "ICB",
-    "Clinical Commissioning",
+    "ICS",
+    "Clinical Commissioning Group",
     "CCG",
     "Health and Social Care",
     "Department of Health",
     "DHSC",
+    "Primary Care Trust",  # Legacy
+    "PCT",
+    "Health Authority",
+    "Ambulance Service",
 ]
 
 
