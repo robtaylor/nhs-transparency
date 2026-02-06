@@ -1,0 +1,203 @@
+name: Data Collection
+
+on:
+  schedule:
+    # Run weekly on Sunday at 2am UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      fetch_organizations:
+        description: 'Fetch NHS organizations from ODS'
+        type: boolean
+        default: true
+      fetch_contracts:
+        description: 'Fetch contracts from data.gov.uk'
+        type: boolean
+        default: true
+      contracts_year_month:
+        description: 'Contracts month to fetch (YYYY-MM format, leave empty for latest)'
+        type: string
+        required: false
+
+env:
+  DATABASE_PATH: data/nhs.db
+
+jobs:
+  fetch-organizations:
+    if: ${{ github.event_name == 'schedule' || github.event.inputs.fetch_organizations == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Download existing database (if exists)
+        uses: actions/download-artifact@v4
+        with:
+          name: nhs-database
+          path: data/
+        continue-on-error: true
+
+      - name: Initialize database
+        run: uv run nhs --db ${{ env.DATABASE_PATH }} init
+
+      - name: Fetch NHS organizations
+        run: |
+          uv run nhs --db ${{ env.DATABASE_PATH }} fetch organizations
+          uv run nhs --db ${{ env.DATABASE_PATH }} stats
+
+      - name: Upload database artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nhs-database-orgs
+          path: data/nhs.db
+          retention-days: 90
+
+  fetch-contracts:
+    if: ${{ github.event_name == 'schedule' || github.event.inputs.fetch_contracts == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Download existing database (if exists)
+        uses: actions/download-artifact@v4
+        with:
+          name: nhs-database
+          path: data/
+        continue-on-error: true
+
+      - name: Initialize database
+        run: uv run nhs --db ${{ env.DATABASE_PATH }} init
+
+      - name: Determine contracts month
+        id: month
+        run: |
+          if [ -n "${{ github.event.inputs.contracts_year_month }}" ]; then
+            echo "month=${{ github.event.inputs.contracts_year_month }}" >> "$GITHUB_OUTPUT"
+          else
+            # Get previous month (data is usually delayed by ~1 month)
+            echo "month=$(date -d 'last month' '+%Y-%m')" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download contracts CSV from data.gov.uk
+        run: |
+          # Contracts Finder publishes monthly CSVs
+          # Format: https://data.gov.uk/dataset/contracts-finder-archive
+          YEAR_MONTH="${{ steps.month.outputs.month }}"
+          YEAR="${YEAR_MONTH%-*}"
+          MONTH="${YEAR_MONTH#*-}"
+
+          echo "Fetching contracts for ${YEAR_MONTH}"
+
+          # Use the direct CSV endpoint if available
+          curl -L -o "data/contracts-${YEAR_MONTH}.csv" \
+            "https://www.contractsfinder.service.gov.uk/Published/Notices/Search/CSV?publishedFrom=${YEAR}-${MONTH}-01&publishedTo=${YEAR}-${MONTH}-31" \
+            || echo "Direct download failed, will try data.gov.uk API"
+
+      - name: Load contracts into database
+        run: |
+          YEAR_MONTH="${{ steps.month.outputs.month }}"
+          if [ -f "data/contracts-${YEAR_MONTH}.csv" ]; then
+            uv run nhs --db ${{ env.DATABASE_PATH }} fetch contracts \
+              --file "data/contracts-${YEAR_MONTH}.csv" \
+              --terms "Palantir" --terms "TPP" --terms "EMIS" \
+              --terms "electronic patient record" --terms "EPR" \
+              --terms "health data" --terms "clinical system"
+          else
+            echo "No contracts file found for ${YEAR_MONTH}"
+          fi
+
+      - name: Show database stats
+        run: uv run nhs --db ${{ env.DATABASE_PATH }} stats
+
+      - name: Upload database artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nhs-database-contracts
+          path: data/nhs.db
+          retention-days: 90
+
+  merge-databases:
+    needs: [fetch-organizations, fetch-contracts]
+    if: always() && (needs.fetch-organizations.result == 'success' || needs.fetch-contracts.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Download organization database
+        uses: actions/download-artifact@v4
+        with:
+          name: nhs-database-orgs
+          path: data/orgs/
+        continue-on-error: true
+
+      - name: Download contracts database
+        uses: actions/download-artifact@v4
+        with:
+          name: nhs-database-contracts
+          path: data/contracts/
+        continue-on-error: true
+
+      - name: Merge databases
+        run: |
+          mkdir -p data
+          uv run python scripts/merge_databases.py \
+            --output data/nhs.db \
+            data/orgs/nhs.db \
+            data/contracts/nhs.db
+
+      - name: Show final stats
+        run: |
+          uv run nhs --db data/nhs.db stats
+          uv run nhs --db data/nhs.db summary
+
+      - name: Upload merged database
+        uses: actions/upload-artifact@v4
+        with:
+          name: nhs-database
+          path: data/nhs.db
+          retention-days: 90
+
+      - name: Generate report
+        run: |
+          uv run python scripts/generate_report.py \
+            --db data/nhs.db \
+            --output data/report.md
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: nhs-report
+          path: data/report.md
+          retention-days: 90
