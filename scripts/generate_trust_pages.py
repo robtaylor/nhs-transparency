@@ -208,7 +208,7 @@ def generate_trust_page(conn: sqlite3.Connection, buyer_name: str, output_dir: P
     awarded_rows = ""
     for row in awarded_contracts:
         date = row[0][:10] if row[0] else "Unknown"
-        supplier = (row[1][:40] + "...") if row[1] and len(row[1]) > 40 else (row[1] or "Unknown")
+        supplier = (row[1][:40] + "...") if row[1] and len(row[1]) > 40 else (row[1] or "Not specified")
         title = (row[2][:50] + "...") if row[2] and len(row[2]) > 50 else (row[2] or "Unknown")
         value = format_value(row[3])
 

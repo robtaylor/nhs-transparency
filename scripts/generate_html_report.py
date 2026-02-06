@@ -524,7 +524,7 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
         supplier = (
             row["supplier_name"][:30] + "..."
             if len(row["supplier_name"] or "") > 30
-            else (row["supplier_name"] or "Unknown")
+            else (row["supplier_name"] or "Not specified")
         )
         title = (
             row["title"][:50] + "..."

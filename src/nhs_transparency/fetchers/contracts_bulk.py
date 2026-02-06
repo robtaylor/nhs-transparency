@@ -54,9 +54,26 @@ MAX_REASONABLE_CONTRACT_VALUE = 200_000_000
 FRAMEWORK_KEYWORDS = [
     "framework agreement",
     "framework contract",
+    "framework for",
     "dynamic purchasing system",
     "dps",
     "call-off",
+    " framework",  # catches "NHS Framework", "National Framework", etc.
+]
+
+# Keywords that indicate pre-procurement/market engagement (no supplier expected)
+PRE_PROCUREMENT_KEYWORDS = [
+    "market engagement",
+    "expression of interest",
+    "eoi",
+    "request for information",
+    "rfi",
+    "prior information notice",
+    "pin",
+    "discovery phase",
+    "pre-procurement",
+    "market testing",
+    "soft market",
 ]
 
 
@@ -64,6 +81,12 @@ def is_framework_agreement(title: str) -> bool:
     """Check if a contract title indicates it's a framework agreement."""
     title_lower = title.lower()
     return any(kw in title_lower for kw in FRAMEWORK_KEYWORDS)
+
+
+def is_pre_procurement(title: str) -> bool:
+    """Check if a contract is a pre-procurement notice (no supplier expected)."""
+    title_lower = title.lower()
+    return any(kw in title_lower for kw in PRE_PROCUREMENT_KEYWORDS)
 
 
 @dataclass
@@ -185,6 +208,9 @@ class ContractsBulkLoader:
             if not external_id:
                 continue
 
+            # Detect if this is a framework agreement (needed for supplier handling)
+            is_framework = is_framework_agreement(title)
+
             # Extract supplier - Contracts Finder format has complex supplier field
             supplier_field = row.get(
                 "Supplier [Name|Address|Ref type|Ref Number|Is SME|Is VCSE]", ""
@@ -202,8 +228,12 @@ class ContractsBulkLoader:
                     or None
                 )
 
-            # Detect if this is a framework agreement
-            is_framework = is_framework_agreement(title)
+            # If no supplier, determine why and label appropriately
+            if not supplier_name:
+                if is_framework:
+                    supplier_name = "Multiple suppliers (framework)"
+                elif is_pre_procurement(title):
+                    supplier_name = "Pre-procurement (no supplier yet)"
 
             # Extract value - try awarded value first (actual spend)
             awarded_value_gbp = None
