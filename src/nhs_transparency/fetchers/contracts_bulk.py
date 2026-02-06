@@ -166,8 +166,9 @@ class ContractsBulkLoader:
                 "Supplier [Name|Address|Ref type|Ref Number|Is SME|Is VCSE]", ""
             )
             if supplier_field and "|" in supplier_field:
-                # Format: "Name|Address|RefType|RefNum|IsSME|IsVCSE"
-                supplier_name = supplier_field.split("|")[0].strip()
+                # Format: "[Name|Address|RefType|RefNum|IsSME|IsVCSE]"
+                # Strip leading "[" and trailing "]", then split by "|"
+                supplier_name = supplier_field.lstrip("[").split("|")[0].strip()
             else:
                 supplier_name = (
                     supplier_field
