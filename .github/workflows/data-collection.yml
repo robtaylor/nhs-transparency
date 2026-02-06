@@ -129,15 +129,17 @@ jobs:
 
           # Also fetch IT-specific contracts
           echo "Fetching IT contracts..."
-          for KEYWORD in "Palantir" "TPP" "EMIS" "electronic patient record" "health data platform"; do
+          for KEYWORD in "Palantir" "TPP" "EMIS" "EPR" "clinical+system"; do
             echo "Searching for: ${KEYWORD}"
+            # URL encode spaces as +
+            ENCODED_KEYWORD="${KEYWORD// /+}"
             curl -s -L -c data/cookies.txt -b data/cookies.txt \
-              "https://www.contractsfinder.service.gov.uk/Search/Results?Keywords=${KEYWORD}&PublishedFrom=${START_DATE}&PublishedTo=${END_DATE}" \
-              > /dev/null
+              "https://www.contractsfinder.service.gov.uk/Search/Results?Keywords=${ENCODED_KEYWORD}&PublishedFrom=${START_DATE}&PublishedTo=${END_DATE}" \
+              > /dev/null || continue
             curl -s -L -c data/cookies.txt -b data/cookies.txt \
               "https://www.contractsfinder.service.gov.uk/Search/GetCsvFile" \
-              -o "data/contracts-${KEYWORD// /-}.csv" 2>/dev/null || true
-            sleep 1
+              -o "data/contracts-${KEYWORD}.csv" || true
+            sleep 2
           done
 
           rm -f data/cookies.txt
