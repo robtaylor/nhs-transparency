@@ -36,59 +36,137 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     <main class="container mx-auto px-4 py-8">
         <!-- Key Statistics -->
-        <section class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div class="card text-center">
-                <div class="stat-value">{total_organizations:,}</div>
-                <div class="stat-label">NHS Organizations</div>
-            </div>
-            <div class="card text-center">
-                <div class="stat-value">{total_trusts:,}</div>
-                <div class="stat-label">NHS Trusts</div>
-            </div>
+        <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div class="card text-center">
                 <div class="stat-value">{total_contracts:,}</div>
-                <div class="stat-label">IT Contracts Tracked</div>
+                <div class="stat-label">Contracts Tracked</div>
             </div>
             <div class="card text-center">
                 <div class="stat-value">£{total_contract_value:,.0f}M</div>
                 <div class="stat-label">Total Contract Value</div>
             </div>
+            <div class="card text-center">
+                <div class="stat-value">{unique_buyers:,}</div>
+                <div class="stat-label">NHS Buyers</div>
+            </div>
+            <div class="card text-center">
+                <div class="stat-value">{unique_suppliers:,}</div>
+                <div class="stat-label">Suppliers</div>
+            </div>
         </section>
 
-        <!-- Organization Types -->
+        <!-- Key Vendors -->
         <section class="card">
-            <h2 class="text-xl font-semibold mb-4">NHS Organizations by Type</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <canvas id="orgTypeChart"></canvas>
+            <h2 class="text-xl font-semibold mb-4">Key Vendor Analysis</h2>
+            <p class="text-gray-600 mb-4">Focus areas: Palantir (Federated Data Platform), TPP (SystmOne), EMIS (clinical systems)</p>
+            {vendor_analysis}
+        </section>
+
+        <!-- Spending by Year -->
+        <section class="card">
+            <h2 class="text-xl font-semibold mb-4">Contract Awards by Year</h2>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div style="height: 300px;">
+                    <canvas id="yearlySpendChart"></canvas>
                 </div>
                 <div>
-                    <table class="w-full">
+                    <table class="w-full text-sm">
                         <thead>
                             <tr class="border-b">
-                                <th class="text-left py-2">Type</th>
-                                <th class="text-right py-2">Count</th>
+                                <th class="text-left py-2">Year</th>
+                                <th class="text-right py-2">Contracts</th>
+                                <th class="text-right py-2">Value</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {org_type_rows}
+                            {yearly_rows}
                         </tbody>
                     </table>
                 </div>
             </div>
         </section>
 
-        <!-- Supplier Analysis -->
+        <!-- Top Buyers -->
         <section class="card">
-            <h2 class="text-xl font-semibold mb-4">Top IT Suppliers by Contract Value</h2>
-            {supplier_section}
+            <h2 class="text-xl font-semibold mb-4">Top NHS Buyers by Contract Value</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="border-b">
+                            <th class="text-left py-2">Organisation</th>
+                            <th class="text-right py-2">Contracts</th>
+                            <th class="text-right py-2">Total Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {buyer_rows}
+                    </tbody>
+                </table>
+            </div>
         </section>
 
-        <!-- Key Vendors -->
+        <!-- Top Suppliers -->
         <section class="card">
-            <h2 class="text-xl font-semibold mb-4">Key Vendor Analysis</h2>
-            <p class="text-gray-600 mb-4">Focus areas: Palantir (Federated Data Platform), TPP (SystmOne), EMIS</p>
-            {vendor_analysis}
+            <h2 class="text-xl font-semibold mb-4">Top Suppliers by Contract Value</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="border-b">
+                            <th class="text-left py-2">Supplier</th>
+                            <th class="text-right py-2">Contracts</th>
+                            <th class="text-right py-2">Total Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {supplier_rows}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Recent Large Contracts -->
+        <section class="card">
+            <h2 class="text-xl font-semibold mb-4">Recent Large Contracts (>£10M)</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b">
+                            <th class="text-left py-2">Date</th>
+                            <th class="text-left py-2">Buyer</th>
+                            <th class="text-left py-2">Supplier</th>
+                            <th class="text-left py-2">Title</th>
+                            <th class="text-right py-2">Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {large_contracts_rows}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Contract Value Distribution -->
+        <section class="card">
+            <h2 class="text-xl font-semibold mb-4">Contract Value Distribution</h2>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div style="height: 300px;">
+                    <canvas id="valueDistChart"></canvas>
+                </div>
+                <div>
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b">
+                                <th class="text-left py-2">Value Range</th>
+                                <th class="text-right py-2">Contracts</th>
+                                <th class="text-right py-2">Total Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {value_dist_rows}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </section>
 
         <!-- Data Sources -->
@@ -116,11 +194,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 advocacy for open source and UK-based alternatives to proprietary US software.
             </p>
             <p class="text-gray-700 mb-4">
-                Data is collected automatically from public sources including the NHS Organisation
-                Data Service and Contracts Finder.
+                Data is collected automatically from Contracts Finder, filtering for awarded
+                contracts from NHS organisations.
             </p>
             <p class="text-gray-600 text-sm">
-                <a href="https://github.com/your-org/nhs-transparency" class="text-blue-600 hover:underline">
+                <a href="https://github.com/robtaylor/nhs-transparency" class="text-blue-600 hover:underline">
                     View source code on GitHub
                 </a>
             </p>
@@ -130,30 +208,64 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <footer class="bg-gray-800 text-gray-400 py-6">
         <div class="container mx-auto px-4 text-center">
             <p>NHS Transparency Project - Open Data for Public Good</p>
-            <p class="text-sm mt-2">Data is sourced from public government APIs and is provided under the Open Government Licence</p>
+            <p class="text-sm mt-2">Data is sourced from public government APIs under the Open Government Licence</p>
         </div>
     </footer>
 
     <script>
-        // Organization type chart
-        const orgTypeData = {org_type_json};
-        if (orgTypeData.labels.length > 0) {{
-            new Chart(document.getElementById('orgTypeChart'), {{
+        // Yearly spending chart
+        const yearlyData = {yearly_json};
+        if (yearlyData.labels.length > 0) {{
+            new Chart(document.getElementById('yearlySpendChart'), {{
+                type: 'bar',
+                data: {{
+                    labels: yearlyData.labels,
+                    datasets: [{{
+                        label: 'Contract Value (£M)',
+                        data: yearlyData.values,
+                        backgroundColor: '#3B82F6'
+                    }}]
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {{
+                        legend: {{ display: false }}
+                    }},
+                    scales: {{
+                        y: {{
+                            beginAtZero: true,
+                            ticks: {{
+                                callback: function(value) {{
+                                    return '£' + value.toLocaleString() + 'M';
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }});
+        }}
+
+        // Value distribution chart
+        const valueDistData = {value_dist_json};
+        if (valueDistData.labels.length > 0) {{
+            new Chart(document.getElementById('valueDistChart'), {{
                 type: 'doughnut',
                 data: {{
-                    labels: orgTypeData.labels,
+                    labels: valueDistData.labels,
                     datasets: [{{
-                        data: orgTypeData.values,
+                        data: valueDistData.counts,
                         backgroundColor: [
-                            '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'
+                            '#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'
                         ]
                     }}]
                 }},
                 options: {{
                     responsive: true,
+                    maintainAspectRatio: false,
                     plugins: {{
                         legend: {{
-                            position: 'bottom'
+                            position: 'right'
                         }}
                     }}
                 }}
@@ -165,93 +277,48 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 """
 
 
+def format_value(value: int | None) -> str:
+    """Format a contract value as a human-readable string."""
+    if value is None or value == 0:
+        return "Unknown"
+    if value >= 1_000_000_000:
+        return f"£{value / 1_000_000_000:.1f}B"
+    if value >= 1_000_000:
+        return f"£{value / 1_000_000:.1f}M"
+    if value >= 1_000:
+        return f"£{value / 1_000:.0f}K"
+    return f"£{value:,}"
+
+
 def generate_html_report(db_path: Path, output_path: Path) -> None:
     """Generate an HTML dashboard from the database."""
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
 
-    # Gather statistics
-    cursor = conn.execute("SELECT COUNT(*) FROM organizations WHERE status = 'Active'")
-    total_organizations = cursor.fetchone()[0]
-
-    cursor = conn.execute(
-        "SELECT COUNT(*) FROM organizations WHERE org_type = 'NHS Trust' AND status = 'Active'"
-    )
-    total_trusts = cursor.fetchone()[0]
-
+    # Basic statistics
     cursor = conn.execute("SELECT COUNT(*), SUM(COALESCE(value_gbp, 0)) FROM contracts")
     row = cursor.fetchone()
     total_contracts = row[0]
-    total_contract_value = (row[1] or 0) / 1_000_000  # Convert to millions
+    total_contract_value = (row[1] or 0) / 1_000_000
 
-    # Organization types
-    cursor = conn.execute("""
-        SELECT org_type, COUNT(*) as count
-        FROM organizations
-        WHERE status = 'Active'
-        GROUP BY org_type
-        ORDER BY count DESC
-        LIMIT 6
-    """)
-    org_types = cursor.fetchall()
+    cursor = conn.execute("SELECT COUNT(DISTINCT buyer_name) FROM contracts")
+    unique_buyers = cursor.fetchone()[0]
 
-    org_type_rows = ""
-    org_type_labels = []
-    org_type_values = []
-    for row in org_types:
-        org_type_rows += f'<tr class="border-b"><td class="py-2">{row["org_type"]}</td><td class="text-right py-2">{row["count"]:,}</td></tr>'
-        org_type_labels.append(row["org_type"])
-        org_type_values.append(row["count"])
-
-    org_type_json = json.dumps({"labels": org_type_labels, "values": org_type_values})
-
-    # Supplier section
-    if total_contracts > 0:
-        cursor = conn.execute("""
-            SELECT
-                supplier_name,
-                COUNT(*) as contract_count,
-                SUM(COALESCE(value_gbp, 0)) as total_value
-            FROM contracts
-            WHERE supplier_name IS NOT NULL
-            GROUP BY supplier_name
-            ORDER BY total_value DESC
-            LIMIT 10
-        """)
-        suppliers = cursor.fetchall()
-
-        supplier_rows = ""
-        for row in suppliers:
-            value = f"£{row['total_value']:,}" if row["total_value"] else "Unknown"
-            supplier_rows += f"""
-                <tr class="border-b">
-                    <td class="py-2">{row["supplier_name"]}</td>
-                    <td class="text-right py-2">{row["contract_count"]}</td>
-                    <td class="text-right py-2">{value}</td>
-                </tr>
-            """
-
-        supplier_section = f"""
-            <table class="w-full">
-                <thead>
-                    <tr class="border-b">
-                        <th class="text-left py-2">Supplier</th>
-                        <th class="text-right py-2">Contracts</th>
-                        <th class="text-right py-2">Total Value</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {supplier_rows}
-                </tbody>
-            </table>
-        """
-    else:
-        supplier_section = '<p class="text-gray-500">No contract data loaded yet. Run the data collection workflow.</p>'
+    cursor = conn.execute(
+        "SELECT COUNT(DISTINCT supplier_name) FROM contracts WHERE supplier_name IS NOT NULL"
+    )
+    unique_suppliers = cursor.fetchone()[0]
 
     # Vendor analysis
-    key_vendors = ["Palantir", "TPP", "EMIS", "Cerner", "Epic"]
+    key_vendors = [
+        ("Palantir", "Federated Data Platform"),
+        ("TPP", "SystmOne"),
+        ("EMIS", "Clinical Systems"),
+        ("Cerner", "EPR"),
+        ("Epic", "EPR"),
+    ]
     vendor_cards = []
-    for vendor in key_vendors:
+    for vendor, description in key_vendors:
         cursor = conn.execute(
             """
             SELECT
@@ -266,58 +333,223 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
         result = cursor.fetchone()
 
         if result["contract_count"] > 0:
-            value = f"£{result['total_value']:,}" if result["total_value"] else "Unknown"
+            value = format_value(result["total_value"])
             vendor_cards.append(f"""
-                <div class="bg-gray-50 rounded-lg p-4">
-                    <h3 class="font-semibold text-lg">{vendor}</h3>
-                    <p class="text-gray-600">{result["contract_count"]} contracts</p>
-                    <p class="text-blue-600 font-semibold">{value}</p>
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <h3 class="font-semibold text-lg text-red-800">{vendor}</h3>
+                    <p class="text-gray-600 text-sm">{description}</p>
+                    <p class="text-gray-700 mt-2">{result["contract_count"]} contracts</p>
+                    <p class="text-red-600 font-bold text-xl">{value}</p>
                 </div>
             """)
         else:
             vendor_cards.append(f"""
-                <div class="bg-gray-50 rounded-lg p-4">
-                    <h3 class="font-semibold text-lg">{vendor}</h3>
-                    <p class="text-gray-400">No contracts found</p>
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <h3 class="font-semibold text-lg text-green-800">{vendor}</h3>
+                    <p class="text-gray-600 text-sm">{description}</p>
+                    <p class="text-green-600 mt-2">No contracts found</p>
                 </div>
             """)
 
-    vendor_analysis = (
-        f'<div class="grid grid-cols-1 md:grid-cols-5 gap-4">{"".join(vendor_cards)}</div>'
-    )
+    vendor_analysis = f'<div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">{"".join(vendor_cards)}</div>'
+
+    # Yearly spending
+    cursor = conn.execute("""
+        SELECT
+            strftime('%Y', award_date) as year,
+            COUNT(*) as contracts,
+            SUM(COALESCE(value_gbp, 0)) / 1000000.0 as value_millions
+        FROM contracts
+        WHERE award_date IS NOT NULL
+        GROUP BY year
+        ORDER BY year
+    """)
+    yearly_data = cursor.fetchall()
+
+    yearly_rows = ""
+    yearly_labels = []
+    yearly_values = []
+    for row in yearly_data:
+        yearly_rows += f'<tr class="border-b"><td class="py-1">{row["year"]}</td><td class="text-right py-1">{row["contracts"]:,}</td><td class="text-right py-1">£{row["value_millions"]:,.1f}M</td></tr>'
+        yearly_labels.append(row["year"])
+        yearly_values.append(round(row["value_millions"], 1))
+
+    yearly_json = json.dumps({"labels": yearly_labels, "values": yearly_values})
+
+    # Top buyers
+    cursor = conn.execute("""
+        SELECT
+            buyer_name,
+            COUNT(*) as contract_count,
+            SUM(COALESCE(value_gbp, 0)) as total_value
+        FROM contracts
+        GROUP BY buyer_name
+        ORDER BY total_value DESC
+        LIMIT 15
+    """)
+    buyers = cursor.fetchall()
+
+    buyer_rows = ""
+    for row in buyers:
+        value = format_value(row["total_value"])
+        # Truncate long names
+        name = row["buyer_name"][:60] + "..." if len(row["buyer_name"]) > 60 else row["buyer_name"]
+        buyer_rows += f"""
+            <tr class="border-b hover:bg-gray-50">
+                <td class="py-2">{name}</td>
+                <td class="text-right py-2">{row["contract_count"]}</td>
+                <td class="text-right py-2 font-semibold">{value}</td>
+            </tr>
+        """
+
+    # Top suppliers
+    cursor = conn.execute("""
+        SELECT
+            supplier_name,
+            COUNT(*) as contract_count,
+            SUM(COALESCE(value_gbp, 0)) as total_value
+        FROM contracts
+        WHERE supplier_name IS NOT NULL
+        GROUP BY supplier_name
+        ORDER BY total_value DESC
+        LIMIT 15
+    """)
+    suppliers = cursor.fetchall()
+
+    supplier_rows = ""
+    for row in suppliers:
+        value = format_value(row["total_value"])
+        name = (
+            row["supplier_name"][:50] + "..."
+            if len(row["supplier_name"]) > 50
+            else row["supplier_name"]
+        )
+        supplier_rows += f"""
+            <tr class="border-b hover:bg-gray-50">
+                <td class="py-2">{name}</td>
+                <td class="text-right py-2">{row["contract_count"]}</td>
+                <td class="text-right py-2 font-semibold">{value}</td>
+            </tr>
+        """
+
+    # Recent large contracts
+    cursor = conn.execute("""
+        SELECT
+            award_date,
+            buyer_name,
+            supplier_name,
+            title,
+            value_gbp,
+            notice_url
+        FROM contracts
+        WHERE value_gbp >= 10000000
+        ORDER BY award_date DESC
+        LIMIT 20
+    """)
+    large_contracts = cursor.fetchall()
+
+    large_contracts_rows = ""
+    for row in large_contracts:
+        value = format_value(row["value_gbp"])
+        buyer = (
+            row["buyer_name"][:30] + "..."
+            if len(row["buyer_name"] or "") > 30
+            else (row["buyer_name"] or "Unknown")
+        )
+        supplier = (
+            row["supplier_name"][:30] + "..."
+            if len(row["supplier_name"] or "") > 30
+            else (row["supplier_name"] or "Unknown")
+        )
+        title = (
+            row["title"][:50] + "..."
+            if len(row["title"] or "") > 50
+            else (row["title"] or "Unknown")
+        )
+        date = row["award_date"][:10] if row["award_date"] else "Unknown"
+
+        if row["notice_url"]:
+            title_html = f'<a href="{row["notice_url"]}" class="text-blue-600 hover:underline" target="_blank">{title}</a>'
+        else:
+            title_html = title
+
+        large_contracts_rows += f"""
+            <tr class="border-b hover:bg-gray-50">
+                <td class="py-2">{date}</td>
+                <td class="py-2">{buyer}</td>
+                <td class="py-2">{supplier}</td>
+                <td class="py-2">{title_html}</td>
+                <td class="text-right py-2 font-semibold">{value}</td>
+            </tr>
+        """
+
+    if not large_contracts_rows:
+        large_contracts_rows = '<tr><td colspan="5" class="py-4 text-center text-gray-500">No contracts over £10M found</td></tr>'
+
+    # Contract value distribution
+    value_ranges = [
+        ("Under £100K", 0, 100_000),
+        ("£100K - £1M", 100_000, 1_000_000),
+        ("£1M - £10M", 1_000_000, 10_000_000),
+        ("£10M - £100M", 10_000_000, 100_000_000),
+        ("£100M - £1B", 100_000_000, 1_000_000_000),
+        ("Over £1B", 1_000_000_000, None),
+    ]
+
+    value_dist_rows = ""
+    value_dist_labels = []
+    value_dist_counts = []
+
+    for label, min_val, max_val in value_ranges:
+        if max_val:
+            cursor = conn.execute(
+                "SELECT COUNT(*), SUM(COALESCE(value_gbp, 0)) FROM contracts WHERE value_gbp >= ? AND value_gbp < ?",
+                (min_val, max_val),
+            )
+        else:
+            cursor = conn.execute(
+                "SELECT COUNT(*), SUM(COALESCE(value_gbp, 0)) FROM contracts WHERE value_gbp >= ?",
+                (min_val,),
+            )
+        row = cursor.fetchone()
+        count = row[0]
+        total = row[1] or 0
+
+        if count > 0:
+            value_dist_rows += f'<tr class="border-b"><td class="py-1">{label}</td><td class="text-right py-1">{count:,}</td><td class="text-right py-1">{format_value(total)}</td></tr>'
+            value_dist_labels.append(label)
+            value_dist_counts.append(count)
+
+    value_dist_json = json.dumps({"labels": value_dist_labels, "counts": value_dist_counts})
 
     # Data sources
     data_source_rows = ""
 
     cursor = conn.execute("SELECT COUNT(*), MAX(updated_at) FROM organizations")
     row = cursor.fetchone()
-    data_source_rows += f'<tr class="border-b"><td class="py-2">NHS ODS</td><td class="text-right py-2">{row[0]:,}</td><td class="text-right py-2">{row[1] or "N/A"}</td></tr>'
+    data_source_rows += f'<tr class="border-b"><td class="py-2">NHS ODS (Organizations)</td><td class="text-right py-2">{row[0]:,}</td><td class="text-right py-2">{row[1] or "N/A"}</td></tr>'
 
     cursor = conn.execute("SELECT COUNT(*), MAX(created_at) FROM contracts")
     row = cursor.fetchone()
     data_source_rows += f'<tr class="border-b"><td class="py-2">Contracts Finder</td><td class="text-right py-2">{row[0]:,}</td><td class="text-right py-2">{row[1] or "N/A"}</td></tr>'
-
-    cursor = conn.execute("SELECT COUNT(*), MAX(created_at) FROM trust_financials")
-    row = cursor.fetchone()
-    data_source_rows += f'<tr class="border-b"><td class="py-2">Trust Financials</td><td class="text-right py-2">{row[0]:,}</td><td class="text-right py-2">{row[1] or "N/A"}</td></tr>'
-
-    cursor = conn.execute("SELECT COUNT(*), MAX(created_at) FROM pfi_contracts")
-    row = cursor.fetchone()
-    data_source_rows += f'<tr><td class="py-2">PFI Contracts</td><td class="text-right py-2">{row[0]:,}</td><td class="text-right py-2">{row[1] or "N/A"}</td></tr>'
 
     conn.close()
 
     # Generate HTML
     html = HTML_TEMPLATE.format(
         generated_date=datetime.now().strftime("%Y-%m-%d %H:%M UTC"),
-        total_organizations=total_organizations,
-        total_trusts=total_trusts,
         total_contracts=total_contracts,
         total_contract_value=total_contract_value,
-        org_type_rows=org_type_rows,
-        org_type_json=org_type_json,
-        supplier_section=supplier_section,
+        unique_buyers=unique_buyers,
+        unique_suppliers=unique_suppliers,
         vendor_analysis=vendor_analysis,
+        yearly_rows=yearly_rows,
+        yearly_json=yearly_json,
+        buyer_rows=buyer_rows,
+        supplier_rows=supplier_rows,
+        large_contracts_rows=large_contracts_rows,
+        value_dist_rows=value_dist_rows,
+        value_dist_json=value_dist_json,
         data_source_rows=data_source_rows,
     )
 
