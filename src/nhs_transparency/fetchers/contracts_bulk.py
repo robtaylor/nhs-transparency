@@ -45,6 +45,27 @@ NHS_BUYER_KEYWORDS = [
 ]
 
 
+# Maximum reasonable contract value (£200M) - higher values are often framework ceilings
+# For reference: The Palantir FDP contract is £330M over 7 years (~£47M/year)
+# Most actual NHS IT contracts are well under £200M
+MAX_REASONABLE_CONTRACT_VALUE = 200_000_000
+
+# Keywords that indicate a framework agreement rather than a direct contract
+FRAMEWORK_KEYWORDS = [
+    "framework agreement",
+    "framework contract",
+    "dynamic purchasing system",
+    "dps",
+    "call-off",
+]
+
+
+def is_framework_agreement(title: str) -> bool:
+    """Check if a contract title indicates it's a framework agreement."""
+    title_lower = title.lower()
+    return any(kw in title_lower for kw in FRAMEWORK_KEYWORDS)
+
+
 @dataclass
 class ContractRecord:
     """Represents a contract from the bulk CSV data."""
@@ -54,7 +75,10 @@ class ContractRecord:
     description: str | None
     buyer_name: str
     supplier_name: str | None
-    value_gbp: int | None
+    value_gbp: int | None  # Awarded value (actual spend) or capped estimate
+    value_low_gbp: int | None  # Low end of value range
+    value_high_gbp: int | None  # High end of value range (framework ceiling)
+    is_framework: bool  # True if this is a framework agreement
     award_date: date | None
     start_date: date | None
     end_date: date | None
@@ -178,42 +202,67 @@ class ContractsBulkLoader:
                     or None
                 )
 
-            # Extract value - try awarded value first, then value range
-            value_gbp = None
+            # Detect if this is a framework agreement
+            is_framework = is_framework_agreement(title)
+
+            # Extract value - try awarded value first (actual spend)
+            awarded_value_gbp = None
+            value_low_gbp = None
+            value_high_gbp = None
 
             awarded_value = row.get("Awarded Value") or row.get("awards/0/value/amount")
             if awarded_value:
                 try:
-                    value_gbp = int(float(str(awarded_value).replace(",", "").replace("£", "")))
+                    awarded_value_gbp = int(
+                        float(str(awarded_value).replace(",", "").replace("£", ""))
+                    )
                 except (ValueError, TypeError):
                     pass
 
-            # Try value range if no awarded value
-            if not value_gbp:
-                value_low_str = row.get("Value Low") or row.get("tender/minValue/amount")
-                value_high_str = row.get("Value High") or row.get("tender/maxValue/amount")
-                value_low = None
-                value_high = None
+            # Extract value range (may be framework ceiling)
+            value_low_str = row.get("Value Low") or row.get("tender/minValue/amount")
+            value_high_str = row.get("Value High") or row.get("tender/maxValue/amount")
 
-                if value_low_str:
-                    try:
-                        value_low = int(float(str(value_low_str).replace(",", "").replace("£", "")))
-                    except (ValueError, TypeError):
-                        pass
+            if value_low_str:
+                try:
+                    value_low_gbp = int(
+                        float(str(value_low_str).replace(",", "").replace("£", ""))
+                    )
+                except (ValueError, TypeError):
+                    pass
 
-                if value_high_str:
-                    try:
-                        value_high = int(
-                            float(str(value_high_str).replace(",", "").replace("£", ""))
-                        )
-                    except (ValueError, TypeError):
-                        pass
+            if value_high_str:
+                try:
+                    value_high_gbp = int(
+                        float(str(value_high_str).replace(",", "").replace("£", ""))
+                    )
+                except (ValueError, TypeError):
+                    pass
 
-                # Use midpoint of range or high value
-                if value_low and value_high:
-                    value_gbp = (value_low + value_high) // 2
-                elif value_high:
-                    value_gbp = value_high
+            # Determine the value to use for aggregation
+            # Priority: awarded value > capped estimate from range
+            if awarded_value_gbp is not None and awarded_value_gbp > 0:
+                value_gbp = awarded_value_gbp
+            elif value_low_gbp and value_high_gbp:
+                # Use midpoint of range, but cap at reasonable maximum
+                midpoint = (value_low_gbp + value_high_gbp) // 2
+                value_gbp = min(midpoint, MAX_REASONABLE_CONTRACT_VALUE)
+            elif value_high_gbp:
+                # Cap high-only values (likely framework ceilings)
+                value_gbp = min(value_high_gbp, MAX_REASONABLE_CONTRACT_VALUE)
+            else:
+                value_gbp = None
+
+            # If it's a framework with no awarded value and a very high ceiling,
+            # mark it clearly but don't include inflated value in aggregations
+            if (
+                is_framework
+                and not awarded_value_gbp
+                and value_high_gbp
+                and value_high_gbp > MAX_REASONABLE_CONTRACT_VALUE
+            ):
+                # For frameworks, only use value if it's been awarded
+                value_gbp = None
 
             # Extract dates
             award_date = self._parse_date(
@@ -251,6 +300,9 @@ class ContractsBulkLoader:
                     buyer_name=buyer_name,
                     supplier_name=supplier_name if supplier_name else None,
                     value_gbp=value_gbp,
+                    value_low_gbp=value_low_gbp,
+                    value_high_gbp=value_high_gbp,
+                    is_framework=is_framework,
                     award_date=award_date,
                     start_date=start_date,
                     end_date=end_date,
@@ -310,19 +362,26 @@ class ContractsBulkLoader:
         cursor = conn.cursor()
 
         for contract in contracts:
+            # Use "framework" as contract_type if detected
+            contract_type = "framework" if contract.is_framework else None
+
             cursor.execute(
                 """
                 INSERT INTO contracts (
                     external_id, source, buyer_name,
                     supplier_name, title, description, contract_type,
-                    value_gbp, award_date, start_date, end_date, notice_url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    value_gbp, value_low_gbp, value_high_gbp,
+                    award_date, start_date, end_date, notice_url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(external_id) DO UPDATE SET
                     buyer_name = excluded.buyer_name,
                     supplier_name = excluded.supplier_name,
                     title = excluded.title,
                     description = excluded.description,
+                    contract_type = excluded.contract_type,
                     value_gbp = excluded.value_gbp,
+                    value_low_gbp = excluded.value_low_gbp,
+                    value_high_gbp = excluded.value_high_gbp,
                     award_date = excluded.award_date,
                     start_date = excluded.start_date,
                     end_date = excluded.end_date,
@@ -335,8 +394,10 @@ class ContractsBulkLoader:
                     contract.supplier_name,
                     contract.title,
                     contract.description,
-                    None,  # contract_type - would need to classify
+                    contract_type,
                     contract.value_gbp,
+                    contract.value_low_gbp,
+                    contract.value_high_gbp,
                     contract.award_date.isoformat() if contract.award_date else None,
                     contract.start_date.isoformat() if contract.start_date else None,
                     contract.end_date.isoformat() if contract.end_date else None,

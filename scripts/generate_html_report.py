@@ -11,6 +11,12 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+# Maximum value to include in aggregations (£200M)
+# Higher values are often framework ceilings, not actual spend
+# Note: Some legitimate large contracts may be excluded, but this gives
+# more accurate totals than including framework ceiling values
+MAX_AGGREGATION_VALUE = 200_000_000
+
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -43,7 +49,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
             <div class="card text-center">
                 <div class="stat-value">£{total_contract_value:,.0f}M</div>
-                <div class="stat-label">Total Contract Value</div>
+                <div class="stat-label">Awarded Contract Value*</div>
             </div>
             <div class="card text-center">
                 <div class="stat-value">{unique_buyers:,}</div>
@@ -54,6 +60,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <div class="stat-label">Suppliers</div>
             </div>
         </section>
+
+        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-sm text-yellow-800">
+            <strong>*Note on values:</strong> Contract values are from awarded amounts where available.
+            Framework agreements (which set maximum ceilings, not actual spend) are excluded from totals
+            when they exceed £200M, as many frameworks are set to high ceiling values that don't reflect
+            actual spending. See the Framework Agreements section below for high-value frameworks.
+        </div>
 
         <!-- Key Vendors -->
         <section class="card">
@@ -89,13 +102,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <!-- Top Buyers -->
         <section class="card">
             <h2 class="text-xl font-semibold mb-4">Top NHS Buyers by Contract Value</h2>
+            <p class="text-gray-500 text-sm mb-3">Excludes framework ceiling values over £200M</p>
             <div class="overflow-x-auto">
                 <table class="w-full">
                     <thead>
                         <tr class="border-b">
                             <th class="text-left py-2">Organisation</th>
                             <th class="text-right py-2">Contracts</th>
-                            <th class="text-right py-2">Total Value</th>
+                            <th class="text-right py-2">Awarded Value</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -108,13 +122,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <!-- Top Suppliers -->
         <section class="card">
             <h2 class="text-xl font-semibold mb-4">Top Suppliers by Contract Value</h2>
+            <p class="text-gray-500 text-sm mb-3">Excludes framework ceiling values over £200M</p>
             <div class="overflow-x-auto">
                 <table class="w-full">
                     <thead>
                         <tr class="border-b">
                             <th class="text-left py-2">Supplier</th>
                             <th class="text-right py-2">Contracts</th>
-                            <th class="text-right py-2">Total Value</th>
+                            <th class="text-right py-2">Awarded Value</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -126,7 +141,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         <!-- Recent Large Contracts -->
         <section class="card">
-            <h2 class="text-xl font-semibold mb-4">Recent Large Contracts (>£10M)</h2>
+            <h2 class="text-xl font-semibold mb-4">Recent Large Contracts (£10M - £200M)</h2>
+            <p class="text-gray-500 text-sm mb-3">Actual contract awards, excluding framework ceilings</p>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead>
@@ -166,6 +182,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         </tbody>
                     </table>
                 </div>
+            </div>
+        </section>
+
+        <!-- Framework Agreements -->
+        <section class="card">
+            <h2 class="text-xl font-semibold mb-4">Framework Agreements (High Ceiling Values)</h2>
+            <p class="text-gray-600 mb-4">
+                Framework agreements set maximum spending limits but don't represent actual spend.
+                Individual call-off contracts under these frameworks are tracked separately when published.
+            </p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-gray-50">
+                            <th class="text-left py-2">Framework</th>
+                            <th class="text-left py-2">Buyer</th>
+                            <th class="text-right py-2">Ceiling Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {framework_rows}
+                    </tbody>
+                </table>
             </div>
         </section>
 
@@ -295,8 +334,15 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
 
-    # Basic statistics
-    cursor = conn.execute("SELECT COUNT(*), SUM(COALESCE(value_gbp, 0)) FROM contracts")
+    # Basic statistics - exclude very high values (framework ceilings)
+    cursor = conn.execute(
+        """
+        SELECT COUNT(*), SUM(COALESCE(value_gbp, 0))
+        FROM contracts
+        WHERE value_gbp IS NULL OR value_gbp <= ?
+        """,
+        (MAX_AGGREGATION_VALUE,),
+    )
     row = cursor.fetchone()
     total_contracts = row[0]
     total_contract_value = (row[1] or 0) / 1_000_000
@@ -309,7 +355,7 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
     )
     unique_suppliers = cursor.fetchone()[0]
 
-    # Vendor analysis
+    # Vendor analysis - use capped values
     key_vendors = [
         ("Palantir", "Federated Data Platform"),
         ("TPP", "SystmOne"),
@@ -323,12 +369,12 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
             """
             SELECT
                 COUNT(*) as contract_count,
-                SUM(COALESCE(value_gbp, 0)) as total_value
+                SUM(CASE WHEN value_gbp <= ? THEN COALESCE(value_gbp, 0) ELSE 0 END) as total_value
             FROM contracts
             WHERE UPPER(supplier_name) LIKE UPPER(?)
                OR UPPER(title) LIKE UPPER(?)
         """,
-            (f"%{vendor}%", f"%{vendor}%"),
+            (MAX_AGGREGATION_VALUE, f"%{vendor}%", f"%{vendor}%"),
         )
         result = cursor.fetchone()
 
@@ -353,17 +399,20 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
 
     vendor_analysis = f'<div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">{"".join(vendor_cards)}</div>'
 
-    # Yearly spending
-    cursor = conn.execute("""
+    # Yearly spending - exclude very high values
+    cursor = conn.execute(
+        """
         SELECT
             strftime('%Y', award_date) as year,
             COUNT(*) as contracts,
-            SUM(COALESCE(value_gbp, 0)) / 1000000.0 as value_millions
+            SUM(CASE WHEN value_gbp <= ? THEN COALESCE(value_gbp, 0) ELSE 0 END) / 1000000.0 as value_millions
         FROM contracts
         WHERE award_date IS NOT NULL
         GROUP BY year
         ORDER BY year
-    """)
+    """,
+        (MAX_AGGREGATION_VALUE,),
+    )
     yearly_data = cursor.fetchall()
 
     yearly_rows = ""
@@ -376,24 +425,31 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
 
     yearly_json = json.dumps({"labels": yearly_labels, "values": yearly_values})
 
-    # Top buyers
-    cursor = conn.execute("""
+    # Top buyers - exclude very high values
+    cursor = conn.execute(
+        """
         SELECT
             buyer_name,
             COUNT(*) as contract_count,
-            SUM(COALESCE(value_gbp, 0)) as total_value
+            SUM(CASE WHEN value_gbp <= ? THEN COALESCE(value_gbp, 0) ELSE 0 END) as total_value
         FROM contracts
         GROUP BY buyer_name
         ORDER BY total_value DESC
         LIMIT 15
-    """)
+    """,
+        (MAX_AGGREGATION_VALUE,),
+    )
     buyers = cursor.fetchall()
 
     buyer_rows = ""
     for row in buyers:
         value = format_value(row["total_value"])
         # Truncate long names
-        name = row["buyer_name"][:60] + "..." if len(row["buyer_name"]) > 60 else row["buyer_name"]
+        name = (
+            row["buyer_name"][:60] + "..."
+            if len(row["buyer_name"]) > 60
+            else row["buyer_name"]
+        )
         buyer_rows += f"""
             <tr class="border-b hover:bg-gray-50">
                 <td class="py-2">{name}</td>
@@ -402,18 +458,21 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
             </tr>
         """
 
-    # Top suppliers
-    cursor = conn.execute("""
+    # Top suppliers - exclude very high values
+    cursor = conn.execute(
+        """
         SELECT
             supplier_name,
             COUNT(*) as contract_count,
-            SUM(COALESCE(value_gbp, 0)) as total_value
+            SUM(CASE WHEN value_gbp <= ? THEN COALESCE(value_gbp, 0) ELSE 0 END) as total_value
         FROM contracts
         WHERE supplier_name IS NOT NULL
         GROUP BY supplier_name
         ORDER BY total_value DESC
         LIMIT 15
-    """)
+    """,
+        (MAX_AGGREGATION_VALUE,),
+    )
     suppliers = cursor.fetchall()
 
     supplier_rows = ""
@@ -432,8 +491,9 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
             </tr>
         """
 
-    # Recent large contracts
-    cursor = conn.execute("""
+    # Recent large contracts - only include reasonable values
+    cursor = conn.execute(
+        """
         SELECT
             award_date,
             buyer_name,
@@ -442,10 +502,12 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
             value_gbp,
             notice_url
         FROM contracts
-        WHERE value_gbp >= 10000000
+        WHERE value_gbp >= 10000000 AND value_gbp <= ?
         ORDER BY award_date DESC
         LIMIT 20
-    """)
+    """,
+        (MAX_AGGREGATION_VALUE,),
+    )
     large_contracts = cursor.fetchall()
 
     large_contracts_rows = ""
@@ -484,16 +546,62 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
         """
 
     if not large_contracts_rows:
-        large_contracts_rows = '<tr><td colspan="5" class="py-4 text-center text-gray-500">No contracts over £10M found</td></tr>'
+        large_contracts_rows = '<tr><td colspan="5" class="py-4 text-center text-gray-500">No contracts between £10M and £200M found</td></tr>'
 
-    # Contract value distribution
+    # Framework agreements (high ceiling values)
+    cursor = conn.execute(
+        """
+        SELECT
+            title,
+            buyer_name,
+            value_gbp,
+            notice_url
+        FROM contracts
+        WHERE value_gbp > ?
+        ORDER BY value_gbp DESC
+        LIMIT 15
+    """,
+        (MAX_AGGREGATION_VALUE,),
+    )
+    frameworks = cursor.fetchall()
+
+    framework_rows = ""
+    for row in frameworks:
+        value = format_value(row["value_gbp"])
+        buyer = (
+            row["buyer_name"][:40] + "..."
+            if len(row["buyer_name"] or "") > 40
+            else (row["buyer_name"] or "Unknown")
+        )
+        title = (
+            row["title"][:60] + "..."
+            if len(row["title"] or "") > 60
+            else (row["title"] or "Unknown")
+        )
+
+        if row["notice_url"]:
+            title_html = f'<a href="{row["notice_url"]}" class="text-blue-600 hover:underline" target="_blank">{title}</a>'
+        else:
+            title_html = title
+
+        framework_rows += f"""
+            <tr class="border-b hover:bg-gray-50">
+                <td class="py-2">{title_html}</td>
+                <td class="py-2">{buyer}</td>
+                <td class="text-right py-2 text-gray-500">{value}</td>
+            </tr>
+        """
+
+    if not framework_rows:
+        framework_rows = '<tr><td colspan="3" class="py-4 text-center text-gray-500">No high-value contracts over £200M found</td></tr>'
+
+    # Contract value distribution - only include reasonable values
     value_ranges = [
         ("Under £100K", 0, 100_000),
         ("£100K - £1M", 100_000, 1_000_000),
         ("£1M - £10M", 1_000_000, 10_000_000),
         ("£10M - £100M", 10_000_000, 100_000_000),
-        ("£100M - £1B", 100_000_000, 1_000_000_000),
-        ("Over £1B", 1_000_000_000, None),
+        ("£100M - £200M", 100_000_000, MAX_AGGREGATION_VALUE),
     ]
 
     value_dist_rows = ""
@@ -501,16 +609,10 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
     value_dist_counts = []
 
     for label, min_val, max_val in value_ranges:
-        if max_val:
-            cursor = conn.execute(
-                "SELECT COUNT(*), SUM(COALESCE(value_gbp, 0)) FROM contracts WHERE value_gbp >= ? AND value_gbp < ?",
-                (min_val, max_val),
-            )
-        else:
-            cursor = conn.execute(
-                "SELECT COUNT(*), SUM(COALESCE(value_gbp, 0)) FROM contracts WHERE value_gbp >= ?",
-                (min_val,),
-            )
+        cursor = conn.execute(
+            "SELECT COUNT(*), SUM(COALESCE(value_gbp, 0)) FROM contracts WHERE value_gbp >= ? AND value_gbp < ?",
+            (min_val, max_val),
+        )
         row = cursor.fetchone()
         count = row[0]
         total = row[1] or 0
@@ -548,6 +650,7 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
         buyer_rows=buyer_rows,
         supplier_rows=supplier_rows,
         large_contracts_rows=large_contracts_rows,
+        framework_rows=framework_rows,
         value_dist_rows=value_dist_rows,
         value_dist_json=value_dist_json,
         data_source_rows=data_source_rows,
