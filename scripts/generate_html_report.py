@@ -68,10 +68,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             actual spending. See the Framework Agreements section below for high-value frameworks.
         </div>
 
-        <!-- Key Vendors -->
+        <!-- Top Vendors -->
         <section class="card">
-            <h2 class="text-xl font-semibold mb-4">Key Vendor Analysis</h2>
-            <p class="text-gray-600 mb-4">Focus areas: Palantir (Federated Data Platform), TPP (SystmOne), EMIS (clinical systems)</p>
+            <h2 class="text-xl font-semibold mb-4">Top Vendors by Contract Value</h2>
+            <p class="text-gray-600 mb-4">Largest suppliers by awarded contract value (excludes framework ceilings)</p>
             {vendor_analysis}
         </section>
 
@@ -358,47 +358,48 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
     )
     unique_suppliers = cursor.fetchone()[0]
 
-    # Vendor analysis - use capped values
-    key_vendors = [
-        ("Palantir", "Federated Data Platform"),
-        ("TPP", "SystmOne"),
-        ("EMIS", "Clinical Systems"),
-        ("Cerner", "EPR"),
-        ("Epic", "EPR"),
-    ]
-    vendor_cards = []
-    for vendor, description in key_vendors:
-        cursor = conn.execute(
-            """
-            SELECT
-                COUNT(*) as contract_count,
-                SUM(CASE WHEN value_gbp <= ? THEN COALESCE(value_gbp, 0) ELSE 0 END) as total_value
-            FROM contracts
-            WHERE UPPER(supplier_name) LIKE UPPER(?)
-               OR UPPER(title) LIKE UPPER(?)
+    # Top vendors by contract value (dynamic, not hardcoded)
+    # Exclude special labels and bad data entries
+    cursor = conn.execute(
+        """
+        SELECT
+            supplier_name,
+            COUNT(*) as contract_count,
+            SUM(CASE WHEN value_gbp <= ? THEN COALESCE(value_gbp, 0) ELSE 0 END) as total_value
+        FROM contracts
+        WHERE supplier_name IS NOT NULL
+          AND supplier_name NOT IN (
+              'Multiple suppliers (framework)',
+              'Pre-procurement (no supplier yet)',
+              'Not specified'
+          )
+          AND supplier_name NOT LIKE '%framework%'
+          AND supplier_name NOT LIKE 'Please see%'
+          AND supplier_name NOT LIKE 'See attached%'
+          AND supplier_name NOT LIKE 'Various%'
+          AND LENGTH(supplier_name) > 3
+        GROUP BY supplier_name
+        HAVING total_value > 0
+        ORDER BY total_value DESC
+        LIMIT 5
         """,
-            (MAX_AGGREGATION_VALUE, f"%{vendor}%", f"%{vendor}%"),
-        )
-        result = cursor.fetchone()
+        (MAX_AGGREGATION_VALUE,),
+    )
+    top_vendors = cursor.fetchall()
 
-        if result["contract_count"] > 0:
-            value = format_value(result["total_value"])
-            vendor_cards.append(f"""
-                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <h3 class="font-semibold text-lg text-red-800">{vendor}</h3>
-                    <p class="text-gray-600 text-sm">{description}</p>
-                    <p class="text-gray-700 mt-2">{result["contract_count"]} contracts</p>
-                    <p class="text-red-600 font-bold text-xl">{value}</p>
-                </div>
-            """)
-        else:
-            vendor_cards.append(f"""
-                <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <h3 class="font-semibold text-lg text-green-800">{vendor}</h3>
-                    <p class="text-gray-600 text-sm">{description}</p>
-                    <p class="text-green-600 mt-2">No contracts found</p>
-                </div>
-            """)
+    vendor_cards = []
+    for row in top_vendors:
+        supplier = row["supplier_name"]
+        # Truncate long names
+        display_name = (supplier[:25] + "...") if len(supplier) > 25 else supplier
+        value = format_value(row["total_value"])
+        vendor_cards.append(f"""
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 class="font-semibold text-lg text-blue-800" title="{supplier}">{display_name}</h3>
+                <p class="text-gray-700 mt-2">{row["contract_count"]} contracts</p>
+                <p class="text-blue-600 font-bold text-xl">{value}</p>
+            </div>
+        """)
 
     vendor_analysis = f'<div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">{"".join(vendor_cards)}</div>'
 
