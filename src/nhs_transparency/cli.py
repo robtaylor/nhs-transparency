@@ -268,7 +268,9 @@ def fetch_known_contracts(ctx):
 
     console.print(f"[green]Loaded {loaded} known contracts[/green]")
     for contract in contracts:
-        console.print(f"  - {contract['title']} ({contract['supplier']}): £{contract['value_gbp']:,}")
+        console.print(
+            f"  - {contract['title']} ({contract['supplier']}): £{contract['value_gbp']:,}"
+        )
 
 
 @main.group()
