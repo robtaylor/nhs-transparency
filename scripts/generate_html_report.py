@@ -450,11 +450,7 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
     for row in buyers:
         value = format_value(row["total_value"])
         # Truncate long names
-        name = (
-            row["buyer_name"][:60] + "..."
-            if len(row["buyer_name"]) > 60
-            else row["buyer_name"]
-        )
+        name = row["buyer_name"][:60] + "..." if len(row["buyer_name"]) > 60 else row["buyer_name"]
         buyer_rows += f"""
             <tr class="border-b hover:bg-gray-50">
                 <td class="py-2">{name}</td>

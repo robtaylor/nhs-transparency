@@ -101,9 +101,7 @@ def fetch_contracts(
 
         # Click "Update results" and wait for navigation
         print("Applying filters (closed + awarded)...")
-        with page.expect_response(
-            lambda r: "Search/Results" in r.url, timeout=60000
-        ):
+        with page.expect_response(lambda r: "Search/Results" in r.url, timeout=60000):
             page.click("#adv_search_button")
 
         # Wait for results to load
@@ -181,12 +179,9 @@ def main():
     parser.add_argument(
         "--no-headless", action="store_true", help="Run browser in visible mode (for debugging)"
     )
+    parser.add_argument("--year", "-y", type=int, help="Filter by publication year (e.g., 2024)")
     parser.add_argument(
-        "--year", "-y", type=int, help="Filter by publication year (e.g., 2024)"
-    )
-    parser.add_argument(
-        "--timeout", "-t", type=int, default=300,
-        help="Download timeout in seconds (default: 300)"
+        "--timeout", "-t", type=int, default=300, help="Download timeout in seconds (default: 300)"
     )
 
     args = parser.parse_args()

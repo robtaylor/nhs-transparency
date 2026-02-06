@@ -255,9 +255,7 @@ class ContractsBulkLoader:
 
             if value_low_str:
                 try:
-                    value_low_gbp = int(
-                        float(str(value_low_str).replace(",", "").replace("£", ""))
-                    )
+                    value_low_gbp = int(float(str(value_low_str).replace(",", "").replace("£", "")))
                 except (ValueError, TypeError):
                     pass
 
