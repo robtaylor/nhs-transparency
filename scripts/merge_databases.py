@@ -74,8 +74,8 @@ def merge_databases(output_path: Path, input_paths: list[Path]) -> None:
             except sqlite3.Error as e:
                 logger.warning(f"  Failed to merge table {table}: {e}")
 
-        conn.execute("DETACH DATABASE source")
         conn.commit()
+        conn.execute("DETACH DATABASE source")
 
     conn.execute("PRAGMA foreign_keys = ON")
     conn.close()
