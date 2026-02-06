@@ -23,27 +23,25 @@ logger = logging.getLogger(__name__)
 
 # NHS-related buyer keywords for filtering
 # These must strongly indicate an NHS organization to avoid false positives
-# (e.g., "Trust" alone matches "National Trust", "King's Trust", etc.)
+# Note: Short acronyms like "ICS", "PCT" removed - they cause false positives
+# (e.g., "ICS" matches "Chemonics", "PCT" matches "Inspector")
 NHS_BUYER_KEYWORDS = [
-    "NHS",  # Direct NHS branding
+    "NHS",  # Direct NHS branding - most reliable indicator
     "National Health Service",
-    "NHS Trust",  # Specific NHS Trust designation
+    "NHS Trust",
     "NHS Foundation Trust",
-    "Foundation Trust",  # Usually NHS
+    "Foundation Trust",
     "Hospital Trust",
     "Integrated Care Board",
     "Integrated Care System",
-    "ICB",
-    "ICS",
     "Clinical Commissioning Group",
-    "CCG",
     "Health and Social Care",
     "Department of Health",
     "DHSC",
-    "Primary Care Trust",  # Legacy
-    "PCT",
+    "Primary Care Trust",
     "Health Authority",
     "Ambulance Service",
+    "Ambulance Trust",
 ]
 
 
