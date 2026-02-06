@@ -209,6 +209,68 @@ def fetch_contracts(ctx, csv_file: Path | None, terms: tuple[str], all_buyers: b
             conn.close()
 
 
+@fetch.command("known-contracts")
+@click.pass_context
+def fetch_known_contracts(ctx):
+    """Load known major NHS IT contracts.
+
+    These are high-profile contracts that we track explicitly,
+    like the Palantir Federated Data Platform contract.
+    """
+    from .fetchers.known_contracts import get_known_contracts
+
+    db_path = ctx.obj.get("db_path")
+    db.init_db(db_path)
+
+    conn = db.get_connection(db_path)
+    cursor = conn.cursor()
+
+    contracts = get_known_contracts()
+    loaded = 0
+
+    for contract in contracts:
+        cursor.execute(
+            """
+            INSERT INTO contracts (
+                external_id, source, buyer_name, supplier_name,
+                title, description, value_gbp,
+                award_date, start_date, end_date, notice_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(external_id) DO UPDATE SET
+                buyer_name = excluded.buyer_name,
+                supplier_name = excluded.supplier_name,
+                title = excluded.title,
+                description = excluded.description,
+                value_gbp = excluded.value_gbp,
+                award_date = excluded.award_date,
+                start_date = excluded.start_date,
+                end_date = excluded.end_date,
+                notice_url = excluded.notice_url
+            """,
+            (
+                contract["notice_id"],
+                "known_contracts",
+                contract["buyer"],
+                contract["supplier"],
+                contract["title"],
+                contract["description"],
+                contract["value_gbp"],
+                contract["award_date"],
+                contract["start_date"],
+                contract["end_date"],
+                f"https://www.contractsfinder.service.gov.uk/notice/{contract['notice_id']}",
+            ),
+        )
+        loaded += 1
+
+    conn.commit()
+    conn.close()
+
+    console.print(f"[green]Loaded {loaded} known contracts[/green]")
+    for contract in contracts:
+        console.print(f"  - {contract['title']} ({contract['supplier']}): £{contract['value_gbp']:,}")
+
+
 @main.group()
 def query():
     """Query the database."""

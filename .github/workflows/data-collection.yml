@@ -162,6 +162,11 @@ jobs:
             fi
           done
 
+      - name: Load known major contracts
+        run: |
+          echo "Loading known major NHS IT contracts..."
+          uv run nhs --db ${{ env.DATABASE_PATH }} fetch known-contracts
+
       - name: Show database stats
         run: uv run nhs --db ${{ env.DATABASE_PATH }} stats
 
