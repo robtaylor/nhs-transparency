@@ -41,78 +41,89 @@ def fetch_contracts(
         context = browser.new_context(accept_downloads=True)
         page = context.new_page()
 
+        # Set a longer default timeout
+        page.set_default_timeout(60000)
+
         print("Navigating to Contracts Finder...")
         page.goto("https://www.contractsfinder.service.gov.uk/Search/Results")
 
-        # Wait for page to load
+        # Wait for the search form to be ready
+        page.wait_for_selector("#keywords", state="visible")
+        time.sleep(2)
+
+        # Enter search keyword
+        print(f"Searching for: {keyword}")
+        page.fill("#keywords", keyword)
+
+        # Set notice status filters
+        # Uncheck "Open" (checked by default), check "Closed"
+        open_cb = page.locator("#open")
+        if open_cb.is_checked():
+            open_cb.click()
+            time.sleep(0.5)
+
+        closed_cb = page.locator("#closed")
+        if not closed_cb.is_checked():
+            closed_cb.click()
+            time.sleep(0.5)
+
+        # Check "Awarded contract" procurement stage
+        awarded_cb = page.locator("#awarded")
+        if not awarded_cb.is_checked():
+            awarded_cb.click()
+            time.sleep(0.5)
+
+        # Click "Update results" and wait for navigation
+        print("Applying filters (closed + awarded)...")
+        with page.expect_response(
+            lambda r: "Search/Results" in r.url, timeout=60000
+        ):
+            page.click("#adv_search_button")
+
+        # Wait for results to load
         page.wait_for_load_state("networkidle")
         time.sleep(2)
 
-        # Enter search keyword FIRST
-        print(f"Searching for: {keyword}")
-        keyword_input = page.locator("#keywords")
-        keyword_input.fill(keyword)
-
-        # Uncheck "Open" notices (checked by default)
-        open_checkbox = page.locator("#open")
-        if open_checkbox.is_checked():
-            open_checkbox.uncheck()
-
-        # Check "Closed" notices
-        closed_checkbox = page.locator("#closed")
-        if not closed_checkbox.is_checked():
-            closed_checkbox.check()
-
-        # Check "Awarded contract" procurement stage
-        awarded_checkbox = page.locator("#awarded")
-        if not awarded_checkbox.is_checked():
-            awarded_checkbox.check()
-
-        # Click "Update results" button
-        print("Applying filters (closed + awarded)...")
-        update_button = page.locator("#adv_search_button")
-        update_button.click()
-
-        # Wait for results to update
-        page.wait_for_load_state("networkidle")
-        time.sleep(3)  # Extra wait for dynamic content
-
         # Get result count
-        result_count_el = page.locator(".search-result-count")
-        result_count = result_count_el.text_content() if result_count_el.count() > 0 else "unknown"
+        result_count = "unknown"
+        try:
+            result_el = page.locator(".search-result-count")
+            if result_el.count() > 0:
+                result_count = result_el.text_content()
+        except Exception:
+            pass
         print(f"Found {result_count} notices")
 
-        # Set up download handler
+        # Prepare output directory
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Click download CSV link
+        # Find the CSV download link
         print("Downloading CSV...")
-        with page.expect_download() as download_info:
-            # Find and click the CSV download link
-            csv_link = page.locator("a:has-text('Download results as a CSV file')")
-            if csv_link.count() == 0:
-                # Try alternative selector
-                csv_link = page.locator("a[href*='GetCsvFile']")
+        csv_link = page.locator("a:has-text('Download results as a CSV file')")
 
-            if csv_link.count() > 0:
-                csv_link.click()
-            else:
-                print("ERROR: Could not find CSV download link")
-                browser.close()
-                return 0
+        if csv_link.count() == 0:
+            csv_link = page.locator("a[href*='GetCsvFile']")
+
+        if csv_link.count() == 0:
+            print("ERROR: Could not find CSV download link")
+            # Take a screenshot for debugging
+            page.screenshot(path=str(output_path.parent / "debug-screenshot.png"))
+            browser.close()
+            return 0
+
+        # Click and wait for download
+        with page.expect_download(timeout=120000) as download_info:
+            csv_link.click()
 
         download = download_info.value
         download.save_as(output_path)
-
         print(f"Saved to: {output_path}")
 
         browser.close()
 
-        # Count lines in downloaded file
+        # Count lines
         with open(output_path) as f:
-            line_count = sum(1 for _ in f)
-
-        return line_count
+            return sum(1 for _ in f)
 
 
 def main():
