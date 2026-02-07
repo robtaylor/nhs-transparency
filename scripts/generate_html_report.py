@@ -7,6 +7,7 @@ Creates a static HTML page with charts and tables for GitHub Pages.
 
 import argparse
 import json
+import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -16,6 +17,14 @@ from pathlib import Path
 # Note: Some legitimate large contracts may be excluded, but this gives
 # more accurate totals than including framework ceiling values
 MAX_AGGREGATION_VALUE = 200_000_000
+
+
+def slugify(name: str) -> str:
+    """Convert a name to a URL-safe slug."""
+    slug = re.sub(r"[^\w\s-]", "", name.lower())
+    slug = re.sub(r"[-\s]+", "-", slug).strip("-")
+    return slug[:80]
+
 
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
@@ -125,7 +134,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <!-- Top Suppliers -->
         <section class="card">
             <h2 class="text-xl font-semibold mb-4">Top Suppliers by Contract Value</h2>
-            <p class="text-gray-500 text-sm mb-3">Excludes framework ceiling values over £200M</p>
+            <p class="text-gray-500 text-sm mb-3">
+                Excludes framework ceiling values over £200M.
+                <a href="suppliers.html" class="text-blue-600 hover:underline">View all suppliers →</a>
+            </p>
             <div class="overflow-x-auto">
                 <table class="w-full">
                     <thead>
@@ -391,15 +403,16 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
     vendor_cards = []
     for row in top_vendors:
         supplier = row["supplier_name"]
+        supplier_slug = slugify(supplier)
         # Truncate long names
         display_name = (supplier[:25] + "...") if len(supplier) > 25 else supplier
         value = format_value(row["total_value"])
         vendor_cards.append(f"""
-            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <a href="supplier-{supplier_slug}.html" class="bg-blue-50 border border-blue-200 rounded-lg p-4 hover:bg-blue-100 hover:border-blue-300 transition-colors block">
                 <h3 class="font-semibold text-lg text-blue-800" title="{supplier}">{display_name}</h3>
                 <p class="text-gray-700 mt-2">{row["contract_count"]} contracts</p>
                 <p class="text-blue-600 font-bold text-xl">{value}</p>
-            </div>
+            </a>
         """)
 
     vendor_analysis = f'<div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">{"".join(vendor_cards)}</div>'
@@ -449,11 +462,12 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
     buyer_rows = ""
     for row in buyers:
         value = format_value(row["total_value"])
+        buyer_slug = slugify(row["buyer_name"])
         # Truncate long names
         name = row["buyer_name"][:60] + "..." if len(row["buyer_name"]) > 60 else row["buyer_name"]
         buyer_rows += f"""
             <tr class="border-b hover:bg-gray-50">
-                <td class="py-2">{name}</td>
+                <td class="py-2"><a href="trust-{buyer_slug}.html" class="text-blue-600 hover:underline">{name}</a></td>
                 <td class="text-right py-2">{row["contract_count"]}</td>
                 <td class="text-right py-2 font-semibold">{value}</td>
             </tr>
@@ -479,6 +493,7 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
     supplier_rows = ""
     for row in suppliers:
         value = format_value(row["total_value"])
+        supplier_slug = slugify(row["supplier_name"])
         name = (
             row["supplier_name"][:50] + "..."
             if len(row["supplier_name"]) > 50
@@ -486,7 +501,7 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
         )
         supplier_rows += f"""
             <tr class="border-b hover:bg-gray-50">
-                <td class="py-2">{name}</td>
+                <td class="py-2"><a href="supplier-{supplier_slug}.html" class="text-blue-600 hover:underline">{name}</a></td>
                 <td class="text-right py-2">{row["contract_count"]}</td>
                 <td class="text-right py-2 font-semibold">{value}</td>
             </tr>
@@ -514,16 +529,14 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
     large_contracts_rows = ""
     for row in large_contracts:
         value = format_value(row["value_gbp"])
-        buyer = (
-            row["buyer_name"][:30] + "..."
-            if len(row["buyer_name"] or "") > 30
-            else (row["buyer_name"] or "Unknown")
-        )
-        supplier = (
-            row["supplier_name"][:30] + "..."
-            if len(row["supplier_name"] or "") > 30
-            else (row["supplier_name"] or "Not specified")
-        )
+        buyer_name = row["buyer_name"] or "Unknown"
+        buyer_slug = slugify(buyer_name)
+        buyer = (buyer_name[:30] + "...") if len(buyer_name) > 30 else buyer_name
+
+        supplier_name = row["supplier_name"] or "Not specified"
+        supplier_slug = slugify(supplier_name) if row["supplier_name"] else ""
+        supplier = (supplier_name[:30] + "...") if len(supplier_name) > 30 else supplier_name
+
         title = (
             row["title"][:50] + "..."
             if len(row["title"] or "") > 50
@@ -536,11 +549,18 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
         else:
             title_html = title
 
+        buyer_html = f'<a href="trust-{buyer_slug}.html" class="hover:underline">{buyer}</a>'
+        supplier_html = (
+            f'<a href="supplier-{supplier_slug}.html" class="hover:underline">{supplier}</a>'
+            if supplier_slug
+            else supplier
+        )
+
         large_contracts_rows += f"""
             <tr class="border-b hover:bg-gray-50">
                 <td class="py-2">{date}</td>
-                <td class="py-2">{buyer}</td>
-                <td class="py-2">{supplier}</td>
+                <td class="py-2">{buyer_html}</td>
+                <td class="py-2">{supplier_html}</td>
                 <td class="py-2">{title_html}</td>
                 <td class="text-right py-2 font-semibold">{value}</td>
             </tr>

@@ -208,9 +208,9 @@ def generate_trust_page(conn: sqlite3.Connection, buyer_name: str, output_dir: P
     awarded_rows = ""
     for row in awarded_contracts:
         date = row[0][:10] if row[0] else "Unknown"
-        supplier = (
-            (row[1][:40] + "...") if row[1] and len(row[1]) > 40 else (row[1] or "Not specified")
-        )
+        supplier_name = row[1] or "Not specified"
+        supplier_slug = slugify(supplier_name) if row[1] else ""
+        supplier = (supplier_name[:40] + "...") if len(supplier_name) > 40 else supplier_name
         title = (row[2][:50] + "...") if row[2] and len(row[2]) > 50 else (row[2] or "Unknown")
         value = format_value(row[3])
 
@@ -219,10 +219,16 @@ def generate_trust_page(conn: sqlite3.Connection, buyer_name: str, output_dir: P
         else:
             title_html = title
 
+        supplier_html = (
+            f'<a href="supplier-{supplier_slug}.html" class="hover:underline">{supplier}</a>'
+            if supplier_slug
+            else supplier
+        )
+
         awarded_rows += f"""
             <tr class="border-b hover:bg-gray-50">
                 <td class="py-2 px-2">{date}</td>
-                <td class="py-2 px-2">{supplier}</td>
+                <td class="py-2 px-2">{supplier_html}</td>
                 <td class="py-2 px-2">{title_html}</td>
                 <td class="text-right py-2 px-2 font-semibold text-green-700">{value}</td>
             </tr>
@@ -291,11 +297,13 @@ def generate_trust_page(conn: sqlite3.Connection, buyer_name: str, output_dir: P
 
     supplier_rows = ""
     for row in suppliers:
-        name = (row[0][:50] + "...") if len(row[0]) > 50 else row[0]
+        supplier_name = row[0]
+        supplier_slug = slugify(supplier_name)
+        name = (supplier_name[:50] + "...") if len(supplier_name) > 50 else supplier_name
         value = format_value(row[2])
         supplier_rows += f"""
             <tr class="border-b hover:bg-gray-50">
-                <td class="py-2">{name}</td>
+                <td class="py-2"><a href="supplier-{supplier_slug}.html" class="text-blue-600 hover:underline">{name}</a></td>
                 <td class="text-right py-2">{row[1]}</td>
                 <td class="text-right py-2 font-semibold">{value}</td>
             </tr>

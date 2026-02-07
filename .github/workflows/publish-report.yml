@@ -61,6 +61,12 @@ jobs:
             --db data/nhs.db \
             --output public/
 
+      - name: Generate supplier detail pages
+        run: |
+          uv run python scripts/generate_supplier_pages.py \
+            --db data/nhs.db \
+            --output public/
+
       - name: Generate markdown report
         run: |
           uv run python scripts/generate_report.py \
