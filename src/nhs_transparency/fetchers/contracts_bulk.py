@@ -106,6 +106,17 @@ class ContractRecord:
     start_date: date | None
     end_date: date | None
     notice_url: str | None
+    # Additional metadata
+    cpv_codes: str | None  # JSON array of CPV codes
+    published_date: date | None
+    supplier_address: str | None
+    is_sme: bool | None
+    is_vcse: bool | None
+    status: str | None
+    location: str | None
+    suitable_for_sme: bool | None
+    suitable_for_vcse: bool | None
+    procedure_type: str | None
 
 
 class ContractsBulkLoader:
@@ -212,13 +223,23 @@ class ContractsBulkLoader:
             is_framework = is_framework_agreement(title)
 
             # Extract supplier - Contracts Finder format has complex supplier field
+            # Format: "[Name|Address|RefType|RefNum|IsSME|IsVCSE]"
             supplier_field = row.get(
                 "Supplier [Name|Address|Ref type|Ref Number|Is SME|Is VCSE]", ""
             )
+            supplier_address = None
+            is_sme = None
+            is_vcse = None
+
             if supplier_field and "|" in supplier_field:
-                # Format: "[Name|Address|RefType|RefNum|IsSME|IsVCSE]"
-                # Strip leading "[" and trailing "]", then split by "|"
-                supplier_name = supplier_field.lstrip("[").split("|")[0].strip()
+                parts = supplier_field.lstrip("[").rstrip("]").split("|")
+                supplier_name = parts[0].strip() if parts else None
+                if len(parts) > 1:
+                    supplier_address = parts[1].strip() or None
+                if len(parts) > 4:
+                    is_sme = parts[4].strip().lower() == "true"
+                if len(parts) > 5:
+                    is_vcse = parts[5].strip().lower() == "true"
             else:
                 supplier_name = (
                     supplier_field
@@ -307,9 +328,30 @@ class ContractsBulkLoader:
                 or row.get("tender/contractPeriod/endDate")
             )
 
-            # If no award date, use published date
+            # Published date (keep separate from award date)
+            published_date = self._parse_date(row.get("Published Date"))
+
+            # If no award date, use published date as fallback
             if not award_date:
-                award_date = self._parse_date(row.get("Published Date"))
+                award_date = published_date
+
+            # Extract additional metadata
+            cpv_codes = row.get("CPV Codes") or row.get("tender/items/0/classification/id")
+            status = row.get("Status") or row.get("tender/status")
+            location = (
+                row.get("Region") or row.get("Location") or row.get("tender/deliveryLocation")
+            )
+            procedure_type = row.get("Procedure Type") or row.get("tender/procurementMethod")
+            suitable_for_sme = None
+            suitable_for_vcse = None
+
+            sme_str = row.get("Suitable for SME")
+            if sme_str:
+                suitable_for_sme = sme_str.strip().lower() in ("yes", "true", "1")
+
+            vcse_str = row.get("Suitable for VCSE")
+            if vcse_str:
+                suitable_for_vcse = vcse_str.strip().lower() in ("yes", "true", "1")
 
             # Build notice URL from identifier
             notice_id = row.get("Notice Identifier", "")
@@ -335,6 +377,16 @@ class ContractsBulkLoader:
                     start_date=start_date,
                     end_date=end_date,
                     notice_url=notice_url,
+                    cpv_codes=cpv_codes,
+                    published_date=published_date,
+                    supplier_address=supplier_address,
+                    is_sme=is_sme,
+                    is_vcse=is_vcse,
+                    status=status,
+                    location=location,
+                    suitable_for_sme=suitable_for_sme,
+                    suitable_for_vcse=suitable_for_vcse,
+                    procedure_type=procedure_type,
                 )
             )
 
@@ -399,8 +451,11 @@ class ContractsBulkLoader:
                     external_id, source, buyer_name,
                     supplier_name, title, description, contract_type,
                     value_gbp, value_low_gbp, value_high_gbp,
-                    award_date, start_date, end_date, notice_url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    award_date, start_date, end_date, notice_url,
+                    cpv_codes, published_date, supplier_address,
+                    is_sme, is_vcse, status, location,
+                    suitable_for_sme, suitable_for_vcse, procurement_route
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(external_id) DO UPDATE SET
                     buyer_name = excluded.buyer_name,
                     supplier_name = excluded.supplier_name,
@@ -413,7 +468,17 @@ class ContractsBulkLoader:
                     award_date = excluded.award_date,
                     start_date = excluded.start_date,
                     end_date = excluded.end_date,
-                    notice_url = excluded.notice_url
+                    notice_url = excluded.notice_url,
+                    cpv_codes = excluded.cpv_codes,
+                    published_date = excluded.published_date,
+                    supplier_address = excluded.supplier_address,
+                    is_sme = excluded.is_sme,
+                    is_vcse = excluded.is_vcse,
+                    status = excluded.status,
+                    location = excluded.location,
+                    suitable_for_sme = excluded.suitable_for_sme,
+                    suitable_for_vcse = excluded.suitable_for_vcse,
+                    procurement_route = excluded.procurement_route
                 """,
                 (
                     contract.external_id,
@@ -430,6 +495,16 @@ class ContractsBulkLoader:
                     contract.start_date.isoformat() if contract.start_date else None,
                     contract.end_date.isoformat() if contract.end_date else None,
                     contract.notice_url,
+                    contract.cpv_codes,
+                    contract.published_date.isoformat() if contract.published_date else None,
+                    contract.supplier_address,
+                    contract.is_sme,
+                    contract.is_vcse,
+                    contract.status,
+                    contract.location,
+                    contract.suitable_for_sme,
+                    contract.suitable_for_vcse,
+                    contract.procedure_type,
                 ),
             )
 

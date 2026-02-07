@@ -67,6 +67,17 @@ CREATE TABLE IF NOT EXISTS contracts (
 
     notice_url TEXT,
 
+    -- Additional metadata
+    cpv_codes TEXT,  -- JSON array of CPV classification codes
+    published_date DATE,
+    supplier_address TEXT,
+    is_sme BOOLEAN,
+    is_vcse BOOLEAN,
+    status TEXT,  -- awarded, closed, etc.
+    location TEXT,  -- geographic area
+    suitable_for_sme BOOLEAN,
+    suitable_for_vcse BOOLEAN,
+
     keywords TEXT,  -- JSON array of matched search terms
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

@@ -511,12 +511,12 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
     cursor = conn.execute(
         """
         SELECT
+            external_id,
             award_date,
             buyer_name,
             supplier_name,
             title,
-            value_gbp,
-            notice_url
+            value_gbp
         FROM contracts
         WHERE value_gbp >= 10000000 AND value_gbp <= ?
         ORDER BY award_date DESC
@@ -529,6 +529,8 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
     large_contracts_rows = ""
     for row in large_contracts:
         value = format_value(row["value_gbp"])
+        contract_slug = slugify(row["external_id"])
+
         buyer_name = row["buyer_name"] or "Unknown"
         buyer_slug = slugify(buyer_name)
         buyer = (buyer_name[:30] + "...") if len(buyer_name) > 30 else buyer_name
@@ -544,10 +546,7 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
         )
         date = row["award_date"][:10] if row["award_date"] else "Unknown"
 
-        if row["notice_url"]:
-            title_html = f'<a href="{row["notice_url"]}" class="text-blue-600 hover:underline" target="_blank">{title}</a>'
-        else:
-            title_html = title
+        title_html = f'<a href="contract-{contract_slug}.html" class="text-blue-600 hover:underline">{title}</a>'
 
         buyer_html = f'<a href="trust-{buyer_slug}.html" class="hover:underline">{buyer}</a>'
         supplier_html = (
@@ -573,10 +572,10 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
     cursor = conn.execute(
         """
         SELECT
+            external_id,
             title,
             buyer_name,
-            value_gbp,
-            notice_url
+            value_gbp
         FROM contracts
         WHERE value_gbp > ?
         ORDER BY value_gbp DESC
@@ -589,6 +588,8 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
     framework_rows = ""
     for row in frameworks:
         value = format_value(row["value_gbp"])
+        contract_slug = slugify(row["external_id"])
+        buyer_slug = slugify(row["buyer_name"]) if row["buyer_name"] else ""
         buyer = (
             row["buyer_name"][:40] + "..."
             if len(row["buyer_name"] or "") > 40
@@ -600,15 +601,17 @@ def generate_html_report(db_path: Path, output_path: Path) -> None:
             else (row["title"] or "Unknown")
         )
 
-        if row["notice_url"]:
-            title_html = f'<a href="{row["notice_url"]}" class="text-blue-600 hover:underline" target="_blank">{title}</a>'
-        else:
-            title_html = title
+        title_html = f'<a href="contract-{contract_slug}.html" class="text-blue-600 hover:underline">{title}</a>'
+        buyer_html = (
+            f'<a href="trust-{buyer_slug}.html" class="hover:underline">{buyer}</a>'
+            if buyer_slug
+            else buyer
+        )
 
         framework_rows += f"""
             <tr class="border-b hover:bg-gray-50">
                 <td class="py-2">{title_html}</td>
-                <td class="py-2">{buyer}</td>
+                <td class="py-2">{buyer_html}</td>
                 <td class="text-right py-2 text-gray-500">{value}</td>
             </tr>
         """

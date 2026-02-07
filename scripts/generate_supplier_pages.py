@@ -201,7 +201,7 @@ def generate_supplier_page(conn: sqlite3.Connection, supplier_name: str, output_
     # Get all contracts (up to 100)
     cursor.execute(
         """
-        SELECT award_date, buyer_name, title, value_gbp, notice_url
+        SELECT external_id, award_date, buyer_name, title, value_gbp
         FROM contracts
         WHERE UPPER(supplier_name) = UPPER(?)
         ORDER BY award_date DESC, value_gbp DESC
@@ -213,16 +213,14 @@ def generate_supplier_page(conn: sqlite3.Connection, supplier_name: str, output_
 
     contract_rows = ""
     for row in contracts:
-        date = row[0][:10] if row[0] else "Unknown"
-        buyer = (row[1][:35] + "...") if row[1] and len(row[1]) > 35 else (row[1] or "Unknown")
-        buyer_slug = slugify(row[1]) if row[1] else ""
-        title = (row[2][:45] + "...") if row[2] and len(row[2]) > 45 else (row[2] or "Unknown")
-        value = format_value(row[3])
+        contract_slug = slugify(row[0])
+        date = row[1][:10] if row[1] else "Unknown"
+        buyer = (row[2][:35] + "...") if row[2] and len(row[2]) > 35 else (row[2] or "Unknown")
+        buyer_slug = slugify(row[2]) if row[2] else ""
+        title = (row[3][:45] + "...") if row[3] and len(row[3]) > 45 else (row[3] or "Unknown")
+        value = format_value(row[4])
 
-        if row[4]:
-            title_html = f'<a href="{row[4]}" class="text-blue-600 hover:underline" target="_blank">{title}</a>'
-        else:
-            title_html = title
+        title_html = f'<a href="contract-{contract_slug}.html" class="text-blue-600 hover:underline">{title}</a>'
 
         buyer_html = (
             f'<a href="trust-{buyer_slug}.html" class="hover:underline">{buyer}</a>'

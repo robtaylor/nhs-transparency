@@ -195,7 +195,7 @@ def generate_trust_page(conn: sqlite3.Connection, buyer_name: str, output_dir: P
     # Get awarded contracts (up to 50 most recent)
     cursor.execute(
         """
-        SELECT award_date, supplier_name, title, value_gbp, notice_url
+        SELECT external_id, award_date, supplier_name, title, value_gbp
         FROM contracts
         WHERE buyer_name = ? AND value_gbp <= ?
         ORDER BY award_date DESC, value_gbp DESC
@@ -207,17 +207,15 @@ def generate_trust_page(conn: sqlite3.Connection, buyer_name: str, output_dir: P
 
     awarded_rows = ""
     for row in awarded_contracts:
-        date = row[0][:10] if row[0] else "Unknown"
-        supplier_name = row[1] or "Not specified"
-        supplier_slug = slugify(supplier_name) if row[1] else ""
+        contract_slug = slugify(row[0])
+        date = row[1][:10] if row[1] else "Unknown"
+        supplier_name = row[2] or "Not specified"
+        supplier_slug = slugify(supplier_name) if row[2] else ""
         supplier = (supplier_name[:40] + "...") if len(supplier_name) > 40 else supplier_name
-        title = (row[2][:50] + "...") if row[2] and len(row[2]) > 50 else (row[2] or "Unknown")
-        value = format_value(row[3])
+        title = (row[3][:50] + "...") if row[3] and len(row[3]) > 50 else (row[3] or "Unknown")
+        value = format_value(row[4])
 
-        if row[4]:
-            title_html = f'<a href="{row[4]}" class="text-blue-600 hover:underline" target="_blank">{title}</a>'
-        else:
-            title_html = title
+        title_html = f'<a href="contract-{contract_slug}.html" class="text-blue-600 hover:underline">{title}</a>'
 
         supplier_html = (
             f'<a href="supplier-{supplier_slug}.html" class="hover:underline">{supplier}</a>'
@@ -247,7 +245,7 @@ def generate_trust_page(conn: sqlite3.Connection, buyer_name: str, output_dir: P
     # Get framework agreements (ceiling values)
     cursor.execute(
         """
-        SELECT award_date, title, value_gbp, notice_url
+        SELECT external_id, award_date, title, value_gbp
         FROM contracts
         WHERE buyer_name = ? AND value_gbp > ?
         ORDER BY value_gbp DESC
@@ -258,14 +256,12 @@ def generate_trust_page(conn: sqlite3.Connection, buyer_name: str, output_dir: P
 
     ceiling_rows = ""
     for row in ceiling_contracts:
-        date = row[0][:10] if row[0] else "Unknown"
-        title = (row[1][:70] + "...") if row[1] and len(row[1]) > 70 else (row[1] or "Unknown")
-        value = format_value(row[2])
+        contract_slug = slugify(row[0])
+        date = row[1][:10] if row[1] else "Unknown"
+        title = (row[2][:70] + "...") if row[2] and len(row[2]) > 70 else (row[2] or "Unknown")
+        value = format_value(row[3])
 
-        if row[3]:
-            title_html = f'<a href="{row[3]}" class="text-blue-600 hover:underline" target="_blank">{title}</a>'
-        else:
-            title_html = title
+        title_html = f'<a href="contract-{contract_slug}.html" class="text-blue-600 hover:underline">{title}</a>'
 
         ceiling_rows += f"""
             <tr class="border-b hover:bg-orange-50">
